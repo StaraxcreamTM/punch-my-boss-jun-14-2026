@@ -30,6 +30,7 @@ const TAUNTS := [
 @onready var ko_banner: Label = $Safe/KoBanner
 @onready var safe: Control = $Safe
 @onready var overlay: ColorRect = $Overlay
+@onready var office: TextureRect = $Office
 
 var rage: float = 0.0
 var ko: float = 0.0
@@ -53,6 +54,12 @@ var _clock: float = 0.0
 var _punch_player: AudioStreamPlayer
 var _ko_player: AudioStreamPlayer
 
+# --- juice / game-feel ---
+var _shake_time: float = 0.0
+var _shake_mag: float = 0.0
+var _flash: ColorRect
+const POW_WORDS := ["POW!", "BAM!", "WHAM!", "BOP!", "OOF!", "SMACK!", "KAPOW!"]
+
 func _ready() -> void:
 	for i in 15:
 		_react.append(load("res://assets/boss/react%d.png" % i))
@@ -70,6 +77,25 @@ func _ready() -> void:
 	_ko_player = AudioStreamPlayer.new()
 	_ko_player.stream = _make_ko()
 	add_child(_ko_player)
+
+	# Overscan bg + tint so screen-shake never reveals a screen edge.
+	for n in [office, overlay]:
+		n.offset_left = -90.0
+		n.offset_top = -90.0
+		n.offset_right = 90.0
+		n.offset_bottom = 90.0
+
+	# Full-screen white flash, drawn above everything.
+	_flash = ColorRect.new()
+	_flash.color = Color(1, 1, 1, 0)
+	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_flash.offset_left = -90.0
+	_flash.offset_top = -90.0
+	_flash.offset_right = 90.0
+	_flash.offset_bottom = 90.0
+	_flash.z_index = 50
+	add_child(_flash)
 
 	ko_banner.modulate.a = 0.0
 	_set_rage(12.0)
@@ -91,8 +117,21 @@ func _process(delta: float) -> void:
 		_type_shown = min(total, _type_shown + TYPE_CPS * delta)
 		boss_line.text = _type_full.substr(0, int(_type_shown))
 
-	# Gentle idle bob.
-	rig.position.y = sin(_clock * 2.4) * 6.0
+	# Gentle idle bob + breathing sway so the boss never feels dead.
+	rig.position.y = sin(_clock * 2.4) * 7.0
+	rig.rotation = sin(_clock * 1.3) * 0.02
+
+	# Screen shake (decaying) applied to bg, tint and play field together.
+	var sh := Vector2.ZERO
+	if _shake_time > 0.0:
+		_shake_time -= delta
+		var d := clampf(_shake_time / 0.32, 0.0, 1.0)
+		sh = Vector2(randf_range(-_shake_mag, _shake_mag), randf_range(-_shake_mag, _shake_mag)) * d
+		if _shake_time <= 0.0:
+			_shake_mag = 0.0
+	office.position = sh * 0.5
+	overlay.position = sh
+	safe.position = sh
 
 	# Head expression: a recent punch wins, then talking, otherwise neutral.
 	var talking := _type_shown < total
@@ -127,12 +166,21 @@ func _on_punch() -> void:
 
 	# Flash a random hurt face.
 	_react_tex = _react[randi() % _react.size()]
-	_react_time = 0.22
+	_react_time = 0.28
 
-	# Squash onto the feet, then spring back.
+	# Cartoon squash -> stretch -> settle (anticipation + overshoot).
+	rig.scale = Vector2(1.22, 0.8)
 	var tw := create_tween()
-	rig.scale = Vector2(1.06, 0.9)
-	tw.tween_property(rig, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(rig, "scale", Vector2(0.9, 1.12), 0.08).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(rig, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	# Impact juice stack: flash + shake + comic text + stars + hit-stop.
+	var impact := head.get_global_transform() * (head.size * 0.5)
+	_flash_screen(0.32)
+	_shake(13.0, 0.30)
+	_spawn_pow(impact)
+	_spawn_stars(impact)
+	_hitstop(0.06)
 
 	_set_rage(rage - 4.0)
 	_set_ko(ko + float(randi_range(11, 17)))
@@ -141,6 +189,9 @@ func _on_punch() -> void:
 
 func _knockout() -> void:
 	_ko_player.play()
+	_flash_screen(0.7)
+	_shake(34.0, 0.6)
+	_hitstop(0.12)
 	_set_ko(0.0)
 	_set_rage(0.0)
 	# Hold the most battered face for a beat.
@@ -155,6 +206,68 @@ func _knockout() -> void:
 	tw.tween_interval(0.5)
 	tw.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
 	_say("...okay. Let's not put THAT in the performance review.")
+
+# --- juice / game-feel helpers ---
+
+func _hitstop(duration: float) -> void:
+	# Briefly freeze time for weight, then restore. The timer ignores
+	# time_scale so it still fires while everything else is frozen.
+	Engine.time_scale = 0.001
+	await get_tree().create_timer(duration, true, false, true).timeout
+	Engine.time_scale = 1.0
+
+func _shake(mag: float, time: float) -> void:
+	_shake_mag = maxf(_shake_mag, mag)
+	_shake_time = maxf(_shake_time, time)
+
+func _flash_screen(a: float) -> void:
+	_flash.color.a = a
+	var tw := create_tween()
+	tw.tween_property(_flash, "color:a", 0.0, 0.18)
+
+func _spawn_pow(pos: Vector2) -> void:
+	var lbl := Label.new()
+	lbl.text = POW_WORDS[randi() % POW_WORDS.size()]
+	lbl.add_theme_font_size_override("font_size", 92)
+	lbl.add_theme_color_override("font_color", Color(1, 0.86, 0.16))
+	lbl.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.14))
+	lbl.add_theme_constant_override("outline_size", 14)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 100
+	add_child(lbl)
+	await get_tree().process_frame  # let it compute its size
+	lbl.pivot_offset = lbl.size / 2.0
+	lbl.global_position = pos - lbl.size / 2.0 + Vector2(randf_range(-30, 30), randf_range(-40, -10))
+	lbl.rotation = randf_range(-0.22, 0.22)
+	lbl.scale = Vector2.ZERO
+	var tw := create_tween()
+	tw.tween_property(lbl, "scale", Vector2(1.25, 1.25), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "scale", Vector2.ONE, 0.06)
+	tw.tween_interval(0.22)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.25)
+	tw.parallel().tween_property(lbl, "position:y", lbl.position.y - 46.0, 0.25)
+	tw.tween_callback(lbl.queue_free)
+
+func _spawn_stars(pos: Vector2) -> void:
+	for i in 8:
+		var s := ColorRect.new()
+		var sz := randf_range(10.0, 22.0)
+		s.size = Vector2(sz, sz)
+		s.color = Color(1, 0.93, 0.45)
+		s.pivot_offset = s.size / 2.0
+		s.rotation = randf() * TAU
+		s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		s.z_index = 99
+		add_child(s)
+		s.global_position = pos - s.size / 2.0
+		var ang := randf() * TAU
+		var dist := randf_range(70.0, 200.0)
+		var dest := s.global_position + Vector2(cos(ang), sin(ang)) * dist
+		var tw := create_tween()
+		tw.tween_property(s, "global_position", dest, randf_range(0.28, 0.46)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(s, "modulate:a", 0.0, 0.42)
+		tw.parallel().tween_property(s, "rotation", s.rotation + randf_range(-3.0, 3.0), 0.42)
+		tw.tween_callback(s.queue_free)
 
 # --- meters ---
 
