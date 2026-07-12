@@ -179,6 +179,15 @@ func _center_pivot() -> void:
 	rig.pivot_offset = Vector2(rig.size.x / 2.0, rig.size.y)
 
 func _apply_safe_area() -> void:
+	# Safe-area insets only make sense on handhelds. On desktop the "display
+	# safe area" is the whole monitor, which would shove the bottom UI (counter,
+	# hint) off-screen — so there we just use the full viewport.
+	if OS.get_name() not in ["Android", "iOS"]:
+		safe.offset_left = 0.0
+		safe.offset_top = 0.0
+		safe.offset_right = 0.0
+		safe.offset_bottom = 0.0
+		return
 	var screen := Vector2(DisplayServer.window_get_size())
 	if screen.x <= 0.0 or screen.y <= 0.0:
 		return
