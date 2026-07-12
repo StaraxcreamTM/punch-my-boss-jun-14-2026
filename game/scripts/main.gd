@@ -291,10 +291,11 @@ func _throw_fist(impact: Vector2, side_left: bool, is_head: bool) -> void:
 func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 	if _koing:
 		return
+	var text_pos := _text_anchor(side_left)
 	if _state == BossState.VULNERABLE:
-		_crit(impact)
+		_crit(impact, text_pos)
 	else:
-		_chip(impact)
+		_chip(impact, text_pos)
 	# Directional reaction: the head snaps aside, the body rocks.
 	if is_head:
 		head.position = Vector2(34.0 if side_left else -34.0, 6.0)
@@ -307,7 +308,7 @@ func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 	if ko >= 100.0:
 		_knockout()
 
-func _chip(impact: Vector2) -> void:
+func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	# A normal punch while the boss is guarding: small damage, standard juice.
 	_punch_player.pitch_scale = randf_range(0.9, 1.15)
 	_punch_player.play()
@@ -319,13 +320,13 @@ func _chip(impact: Vector2) -> void:
 	tw.tween_property(rig, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_flash_screen(0.22)
 	_shake(9.0, 0.24)
-	_spawn_text(impact, POW_WORDS[randi() % POW_WORDS.size()], 84, Color(1, 0.86, 0.16))
+	_spawn_text(text_pos, POW_WORDS[randi() % POW_WORDS.size()], 84, Color(1, 0.86, 0.16))
 	_spawn_stars(impact, 5)
 	_hitstop(0.05)
 	_set_rage(rage - 2.0)
 	_set_ko(ko + float(randi_range(4, 7)))
 
-func _crit(impact: Vector2) -> void:
+func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	# A punch landed in the vulnerable window: big damage + maxed-out juice.
 	_crit_player.play()
 	_punch_player.pitch_scale = randf_range(1.2, 1.4)
@@ -339,7 +340,7 @@ func _crit(impact: Vector2) -> void:
 	_flash_screen(0.55)
 	_shake(26.0, 0.45)
 	_zoom_punch(0.06)
-	_spawn_text(impact, "CRITICAL!", 118, Color(1, 0.3, 0.22))
+	_spawn_text(text_pos, "CRITICAL!", 118, Color(1, 0.3, 0.22))
 	_spawn_stars(impact, 14)
 	_spawn_sweat(impact)
 	_hitstop(0.11)
@@ -473,6 +474,13 @@ func _flash_screen(a: float) -> void:
 	_flash.color.a = a
 	var tw := create_tween()
 	tw.tween_property(_flash, "color:a", 0.0, 0.18)
+
+func _text_anchor(side_left: bool) -> Vector2:
+	# Words pop high and off to the side, in the open office space well clear
+	# of the boss's face (left-side hits pop left, right-side hits pop right).
+	var head_top: Vector2 = head.get_global_transform() * Vector2(head.size.x * 0.5, 0.0)
+	var dx := -380.0 if side_left else 380.0
+	return head_top + Vector2(dx, -110.0)
 
 func _spawn_text(pos: Vector2, text: String, size: int, col: Color) -> void:
 	var lbl := Label.new()
