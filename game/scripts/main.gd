@@ -352,7 +352,6 @@ func _crit(impact: Vector2) -> void:
 
 func _update_fight(delta: float) -> void:
 	var lean := 0.0
-	var extra_y := 0.0
 	var tint := Color(1, 1, 1)
 	_state_time -= delta
 	match _state:
@@ -363,7 +362,6 @@ func _update_fight(delta: float) -> void:
 			# Lean back + pulse orange so the "tell" is unmistakable.
 			var t := 1.0 - clampf(_state_time / WINDUP_DUR, 0.0, 1.0)
 			lean = -0.22 * t
-			extra_y = -14.0 * t
 			var pw := 0.5 + 0.5 * sin(_clock * 26.0)
 			tint = Color(1, 1, 1).lerp(Color(1.5, 0.7, 0.2), pw * t)
 			if _state_time <= 0.0:
@@ -376,7 +374,9 @@ func _update_fight(delta: float) -> void:
 			_position_prompt(pv)
 			if _state_time <= 0.0:
 				_enter_guard()
-	rig.position.y = sin(_clock * 2.4) * 7.0 + extra_y
+	# Feet stay planted: no vertical bob. Life comes from a gentle sway that
+	# pivots around the feet (and the wind-up lean, which also pivots at the feet).
+	rig.position.y = 0.0
 	rig.rotation = sin(_clock * 1.3) * 0.02 + lean
 	boss.modulate = tint
 
