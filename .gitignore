@@ -1,0 +1,16 @@
+# Godot 4+ specific ignores
+.godot/
+
+# Godot Android build template / exports
+game/android/
+export_presets.cfg
+*.apk
+*.aab
+
+# Imported translations (auto-generated from CSV)
+*.translation
+
+# Mono/C# (unused for GDScript, kept for safety)
+.mono/
+data_*/
+mono_crash.*.json
