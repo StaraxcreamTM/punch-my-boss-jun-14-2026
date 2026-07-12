@@ -1,6 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://cpmb0startscene1"]
+[gd_scene load_steps=5 format=3 uid="uid://cpmb0startscene1"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://assets/boss/body.png" id="2_body"]
+[ext_resource type="Texture2D" path="res://assets/boss/neutral.png" id="3_head"]
 
 [sub_resource type="StyleBoxFlat" id="bubble"]
 bg_color = Color(1, 1, 1, 1)
@@ -39,6 +41,60 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="Boss" type="Control" parent="Safe"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -620.0
+offset_right = 260.0
+offset_bottom = 620.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="Rig" type="Control" parent="Safe/Boss"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Body" type="TextureRect" parent="Safe/Boss/Rig"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 18.0
+offset_top = 60.0
+offset_right = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_body")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Head" type="TextureRect" parent="Safe/Boss/Rig"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 38.0
+offset_top = 30.0
+offset_right = -38.0
+offset_bottom = -714.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_head")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="RageLabel" type="Label" parent="Safe"]
 layout_mode = 1
@@ -131,32 +187,18 @@ theme_override_font_sizes/font_size = 34
 text = "…"
 autowrap_mode = 2
 
-[node name="Boss" type="Button" parent="Safe"]
-layout_mode = 1
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -240.0
-offset_top = -240.0
-offset_right = 240.0
-offset_bottom = 240.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 72
-text = "TAP!"
-
 [node name="Counter" type="Label" parent="Safe"]
 layout_mode = 1
 anchor_left = 0.5
-anchor_top = 0.5
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.5
+anchor_bottom = 1.0
 offset_left = -300.0
-offset_top = 252.0
+offset_top = -192.0
 offset_right = 300.0
-offset_bottom = 312.0
+offset_bottom = -132.0
 grow_horizontal = 2
+grow_vertical = 0
 theme_override_font_sizes/font_size = 40
 text = "Punches: 0"
 horizontal_alignment = 1
