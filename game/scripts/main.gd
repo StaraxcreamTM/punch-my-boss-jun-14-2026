@@ -29,7 +29,7 @@ const TAUNTS := [
 @onready var counter: Label = $Safe/Counter
 @onready var ko_banner: Label = $Safe/KoBanner
 @onready var safe: Control = $Safe
-@onready var background: ColorRect = $Background
+@onready var overlay: ColorRect = $Overlay
 
 var rage: float = 0.0
 var ko: float = 0.0
@@ -162,9 +162,10 @@ func _set_rage(v: float) -> void:
 	rage = clampf(v, 0.0, 100.0)
 	rage_fill.anchor_right = rage / 100.0
 	rage_fill.offset_right = 0.0
-	var base := Color(0.101961, 0.078431, 0.141176)
-	var hot := Color(0.28, 0.06, 0.10)
-	background.color = base.lerp(hot, rage / 100.0)
+	# The scene reddens through the overlay as you get angrier.
+	var calm := Color(0, 0, 0, 0.22)
+	var hot := Color(0.42, 0.0, 0.05, 0.42)
+	overlay.color = calm.lerp(hot, rage / 100.0)
 
 func _set_ko(v: float) -> void:
 	ko = clampf(v, 0.0, 100.0)

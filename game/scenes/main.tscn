@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://cpmb0startscene1"]
+[gd_scene load_steps=7 format=3 uid="uid://cpmb0startscene1"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/boss/body.png" id="2_body"]
 [ext_resource type="Texture2D" path="res://assets/boss/neutral.png" id="3_head"]
+[ext_resource type="Texture2D" path="res://assets/bg/office.jpg" id="4_office"]
 
 [sub_resource type="StyleBoxFlat" id="bubble"]
 bg_color = Color(1, 1, 1, 1)
@@ -16,6 +17,13 @@ corner_radius_top_right = 18
 corner_radius_bottom_right = 18
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="shadow"]
+bg_color = Color(0, 0, 0, 0.32)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+
 [node name="Main" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -25,14 +33,25 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Office" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.101961, 0.078431, 0.141176, 1)
+texture = ExtResource("4_office")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Overlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.22)
 
 [node name="Safe" type="Control" parent="."]
 layout_mode = 1
@@ -41,6 +60,20 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="Shadow" type="Panel" parent="Safe"]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -230.0
+offset_top = 596.0
+offset_right = 230.0
+offset_bottom = 636.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("shadow")
 
 [node name="Boss" type="Control" parent="Safe"]
 layout_mode = 1
@@ -102,6 +135,7 @@ offset_left = 16.0
 offset_top = 22.0
 offset_right = 110.0
 offset_bottom = 56.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 26
 text = "RAGE"
 vertical_alignment = 1
@@ -114,7 +148,7 @@ offset_top = 24.0
 offset_right = -16.0
 offset_bottom = 54.0
 grow_horizontal = 2
-color = Color(0, 0, 0, 0.4)
+color = Color(0, 0, 0, 0.5)
 
 [node name="RageFill" type="ColorRect" parent="Safe/RageTrack"]
 layout_mode = 1
@@ -130,6 +164,7 @@ offset_left = 16.0
 offset_top = 64.0
 offset_right = 110.0
 offset_bottom = 98.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 26
 text = "K.O."
 vertical_alignment = 1
@@ -142,7 +177,7 @@ offset_top = 66.0
 offset_right = -16.0
 offset_bottom = 96.0
 grow_horizontal = 2
-color = Color(0, 0, 0, 0.4)
+color = Color(0, 0, 0, 0.5)
 
 [node name="KoFill" type="ColorRect" parent="Safe/KoTrack"]
 layout_mode = 1
@@ -199,6 +234,7 @@ offset_right = 300.0
 offset_bottom = -132.0
 grow_horizontal = 2
 grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 40
 text = "Punches: 0"
 horizontal_alignment = 1
@@ -232,6 +268,7 @@ offset_top = -110.0
 offset_bottom = -40.0
 grow_horizontal = 2
 grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 30
 text = "Tap the boss to punch him!"
 horizontal_alignment = 1
