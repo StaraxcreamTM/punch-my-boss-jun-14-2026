@@ -23,8 +23,8 @@ const TAUNTS := [
 @onready var boss: Control = $Safe/Boss
 @onready var rig: Control = $Safe/Boss/Rig
 @onready var head: TextureRect = $Safe/Boss/Rig/Head
-@onready var rage_fill: ColorRect = $Safe/RageTrack/RageFill
-@onready var ko_fill: ColorRect = $Safe/KoTrack/KoFill
+@onready var rage_fill: Panel = $Safe/RageTrack/RageFill
+@onready var ko_fill: Panel = $Safe/KoTrack/KoFill
 @onready var boss_line: Label = $Safe/Bubble/BossLine
 @onready var counter: Label = $Safe/Counter
 @onready var ko_banner: Label = $Safe/KoBanner
@@ -115,8 +115,10 @@ func _ready() -> void:
 	# Cartoon/illustrated backdrop.
 	var bg_mat := ShaderMaterial.new()
 	bg_mat.shader = load("res://shaders/toon_bg.gdshader")
-	bg_mat.set_shader_parameter("levels", 8.0)
-	bg_mat.set_shader_parameter("saturation", 1.32)
+	bg_mat.set_shader_parameter("levels", 9.0)
+	bg_mat.set_shader_parameter("saturation", 1.3)
+	bg_mat.set_shader_parameter("edge_strength", 1.1)
+	bg_mat.set_shader_parameter("edge_width", 1.7)
 	office.material = bg_mat
 	# Bold outline so the boss reads as a drawn character.
 	var outline_mat := ShaderMaterial.new()
@@ -131,8 +133,8 @@ func _ready() -> void:
 	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var vig_mat := ShaderMaterial.new()
 	vig_mat.shader = load("res://shaders/vignette.gdshader")
-	vig_mat.set_shader_parameter("strength", 0.72)
-	vig_mat.set_shader_parameter("radius", 1.08)
+	vig_mat.set_shader_parameter("strength", 0.6)
+	vig_mat.set_shader_parameter("radius", 1.12)
 	vig.material = vig_mat
 	add_child(vig)
 	move_child(vig, 2)  # after Office(0) and Overlay(1), before Safe(2)

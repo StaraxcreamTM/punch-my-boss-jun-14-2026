@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://cpmb0startscene1"]
+[gd_scene load_steps=11 format=3 uid="uid://cpmb0startscene1"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/boss/body.png" id="2_body"]
@@ -24,6 +24,32 @@ corner_radius_top_left = 24
 corner_radius_top_right = 24
 corner_radius_bottom_right = 24
 corner_radius_bottom_left = 24
+
+[sub_resource type="StyleBoxFlat" id="bar_track"]
+bg_color = Color(0.09, 0.07, 0.12, 0.65)
+border_width_left = 5
+border_width_top = 5
+border_width_right = 5
+border_width_bottom = 5
+border_color = Color(0.06, 0.04, 0.09, 1)
+corner_radius_top_left = 17
+corner_radius_top_right = 17
+corner_radius_bottom_right = 17
+corner_radius_bottom_left = 17
+
+[sub_resource type="StyleBoxFlat" id="bar_rage"]
+bg_color = Color(1, 0.44, 0.12, 1)
+corner_radius_top_left = 13
+corner_radius_top_right = 13
+corner_radius_bottom_right = 13
+corner_radius_bottom_left = 13
+
+[sub_resource type="StyleBoxFlat" id="bar_ko"]
+bg_color = Color(0.26, 0.86, 0.42, 1)
+corner_radius_top_left = 13
+corner_radius_top_right = 13
+corner_radius_bottom_right = 13
+corner_radius_bottom_left = 13
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -145,27 +171,29 @@ offset_top = 22.0
 offset_right = 110.0
 offset_bottom = 56.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 28
 text = "RAGE"
 vertical_alignment = 1
 
-[node name="RageTrack" type="ColorRect" parent="Safe"]
+[node name="RageTrack" type="Panel" parent="Safe"]
 layout_mode = 1
 anchor_right = 1.0
 offset_left = 118.0
-offset_top = 24.0
+offset_top = 22.0
 offset_right = -16.0
-offset_bottom = 54.0
+offset_bottom = 56.0
 grow_horizontal = 2
-color = Color(0, 0, 0, 0.5)
+theme_override_styles/panel = SubResource("bar_track")
 
-[node name="RageFill" type="ColorRect" parent="Safe/RageTrack"]
+[node name="RageFill" type="Panel" parent="Safe/RageTrack"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_vertical = 2
-color = Color(1, 0.35, 0.16, 1)
+theme_override_styles/panel = SubResource("bar_rage")
 
 [node name="KoLabel" type="Label" parent="Safe"]
 layout_mode = 1
@@ -174,27 +202,29 @@ offset_top = 64.0
 offset_right = 110.0
 offset_bottom = 98.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 28
 text = "K.O."
 vertical_alignment = 1
 
-[node name="KoTrack" type="ColorRect" parent="Safe"]
+[node name="KoTrack" type="Panel" parent="Safe"]
 layout_mode = 1
 anchor_right = 1.0
 offset_left = 118.0
-offset_top = 66.0
+offset_top = 64.0
 offset_right = -16.0
-offset_bottom = 96.0
+offset_bottom = 98.0
 grow_horizontal = 2
-color = Color(0, 0, 0, 0.5)
+theme_override_styles/panel = SubResource("bar_track")
 
-[node name="KoFill" type="ColorRect" parent="Safe/KoTrack"]
+[node name="KoFill" type="Panel" parent="Safe/KoTrack"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_vertical = 2
-color = Color(0.21, 0.85, 0.48, 1)
+theme_override_styles/panel = SubResource("bar_ko")
 
 [node name="Bubble" type="Panel" parent="Safe"]
 layout_mode = 1
@@ -244,6 +274,8 @@ offset_bottom = -40.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
+theme_override_constants/outline_size = 10
 theme_override_font_sizes/font_size = 40
 text = "Punches: 0"
 horizontal_alignment = 0
@@ -281,6 +313,8 @@ offset_bottom = -100.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
+theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 30
 text = "Tap the boss to punch him!"
 horizontal_alignment = 0
