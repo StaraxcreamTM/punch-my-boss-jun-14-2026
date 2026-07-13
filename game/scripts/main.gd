@@ -111,6 +111,32 @@ func _ready() -> void:
 	_flash.z_index = 50
 	add_child(_flash)
 
+	# --- stylized "animated" art direction (shaders, no new art) ---
+	# Cartoon/illustrated backdrop.
+	var bg_mat := ShaderMaterial.new()
+	bg_mat.shader = load("res://shaders/toon_bg.gdshader")
+	bg_mat.set_shader_parameter("levels", 8.0)
+	bg_mat.set_shader_parameter("saturation", 1.32)
+	office.material = bg_mat
+	# Bold outline so the boss reads as a drawn character.
+	var outline_mat := ShaderMaterial.new()
+	outline_mat.shader = load("res://shaders/outline.gdshader")
+	outline_mat.set_shader_parameter("width", 4.5)
+	body_spr.material = outline_mat
+	head.material = outline_mat
+	# Cinematic vignette over the world (below the boss + UI, which live in Safe).
+	var vig := ColorRect.new()
+	vig.color = Color(1, 1, 1, 1)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var vig_mat := ShaderMaterial.new()
+	vig_mat.shader = load("res://shaders/vignette.gdshader")
+	vig_mat.set_shader_parameter("strength", 0.72)
+	vig_mat.set_shader_parameter("radius", 1.08)
+	vig.material = vig_mat
+	add_child(vig)
+	move_child(vig, 2)  # after Office(0) and Overlay(1), before Safe(2)
+
 	# Camera-style zoom-punch pivots (canvas 1920x1080; bg/tint overscanned +90).
 	office.pivot_offset = Vector2(1050, 630)
 	overlay.pivot_offset = Vector2(1050, 630)
