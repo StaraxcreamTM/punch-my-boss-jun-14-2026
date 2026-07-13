@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://cpmb0startscene1"]
+[gd_scene load_steps=8 format=3 uid="uid://cpmb0startscene1"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Texture2D" path="res://assets/boss/body.png" id="2_body"]
 [ext_resource type="Texture2D" path="res://assets/boss/neutral.png" id="3_head"]
 [ext_resource type="Texture2D" path="res://assets/bg/office.jpg" id="4_office"]
+[ext_resource type="SpriteFrames" path="res://assets/boss/boss_frames.tres" id="5_frames"]
 
 [sub_resource type="StyleBoxFlat" id="bubble"]
 bg_color = Color(1, 1, 1, 1)
@@ -130,6 +131,12 @@ mouse_filter = 2
 texture = ExtResource("3_head")
 expand_mode = 1
 stretch_mode = 5
+
+[node name="BossAnim" type="AnimatedSprite2D" parent="Safe/Boss/Rig"]
+visible = false
+position = Vector2(260, 640)
+sprite_frames = ExtResource("5_frames")
+animation = &"idle"
 
 [node name="RageLabel" type="Label" parent="Safe"]
 layout_mode = 1
