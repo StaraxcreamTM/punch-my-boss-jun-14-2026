@@ -109,9 +109,9 @@ anchor_top = 0.0
 anchor_right = 0.0
 anchor_bottom = 0.0
 offset_left = 843.0
-offset_top = 497.0
+offset_top = 587.0
 offset_right = 1363.0
-offset_bottom = 1737.0
+offset_bottom = 1827.0
 pivot_offset = Vector2(0, 0)
 scale = Vector2(0.45, 0.45)
 grow_horizontal = 2
@@ -163,6 +163,98 @@ visible = false
 position = Vector2(260, 640)
 sprite_frames = ExtResource("5_frames")
 animation = &"idle"
+
+; --- Boss bone skeleton ---------------------------------------------------
+; A Skeleton2D rig laid over the boss in Rig-local space (the figure spans
+; ~x[18,502], y[60,1240]; feet ~1235, head-top ~140). Bones are in a rest
+; (T-ish) pose and drive nothing yet — to animate the art it must be bound to
+; a weighted Polygon2D or split into per-bone cutout sprites. main.gd exposes
+; @onready refs to the head / arm / fist bones so animations can rotate them.
+[node name="Skeleton" type="Skeleton2D" parent="Safe/Boss/Rig"]
+
+[node name="Hip" type="Bone2D" parent="Safe/Boss/Rig/Skeleton"]
+position = Vector2(260, 809)
+rest = Transform2D(1, 0, 0, 1, 260, 809)
+auto_calculate_length_and_angle = false
+length = 60.0
+bone_angle = 1.5708
+
+[node name="Spine" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(0, -159)
+rest = Transform2D(1, 0, 0, 1, 0, -159)
+auto_calculate_length_and_angle = false
+length = 160.0
+bone_angle = -1.5708
+
+[node name="Chest" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/Spine"]
+position = Vector2(0, -164)
+rest = Transform2D(1, 0, 0, 1, 0, -164)
+auto_calculate_length_and_angle = false
+length = 60.0
+bone_angle = -1.5708
+
+[node name="Head" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/Spine/Chest"]
+position = Vector2(0, -46)
+rest = Transform2D(1, 0, 0, 1, 0, -46)
+auto_calculate_length_and_angle = false
+length = 340.0
+bone_angle = -1.5708
+
+[node name="ArmL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(-138, -323)
+rest = Transform2D(1, 0, 0, 1, -138, -323)
+auto_calculate_length_and_angle = false
+length = 234.0
+bone_angle = 1.7382
+
+[node name="ForearmL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmL"]
+position = Vector2(-39, 231)
+rest = Transform2D(1, 0, 0, 1, -39, 231)
+auto_calculate_length_and_angle = false
+length = 207.0
+bone_angle = 1.5514
+
+[node name="FistL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmL/ForearmL"]
+position = Vector2(4, 207)
+rest = Transform2D(1, 0, 0, 1, 4, 207)
+auto_calculate_length_and_angle = false
+length = 60.0
+bone_angle = 1.5708
+
+[node name="ArmR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(138, -323)
+rest = Transform2D(1, 0, 0, 1, 138, -323)
+auto_calculate_length_and_angle = false
+length = 234.0
+bone_angle = 1.3998
+
+[node name="ForearmR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmR"]
+position = Vector2(40, 231)
+rest = Transform2D(1, 0, 0, 1, 40, 231)
+auto_calculate_length_and_angle = false
+length = 207.0
+bone_angle = 1.5949
+
+[node name="FistR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR"]
+position = Vector2(-5, 207)
+rest = Transform2D(1, 0, 0, 1, -5, 207)
+auto_calculate_length_and_angle = false
+length = 60.0
+bone_angle = 1.5708
+
+[node name="LegL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(-30, 21)
+rest = Transform2D(1, 0, 0, 1, -30, 21)
+auto_calculate_length_and_angle = false
+length = 372.0
+bone_angle = 1.6461
+
+[node name="LegR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(30, 21)
+rest = Transform2D(1, 0, 0, 1, 30, 21)
+auto_calculate_length_and_angle = false
+length = 372.0
+bone_angle = 1.5088
 
 [node name="RageLabel" type="Label" parent="Safe"]
 layout_mode = 1

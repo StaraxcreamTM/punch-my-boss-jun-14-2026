@@ -33,6 +33,17 @@ const TAUNTS := [
 @onready var office: TextureRect = $Office
 @onready var body_spr: TextureRect = $Safe/Boss/Rig/Body
 
+# Bone skeleton (rest pose over the boss). Not bound to the art yet — these
+# handles let future animations rotate the head / arms / fists. See main.tscn.
+@onready var skel: Skeleton2D = $Safe/Boss/Rig/Skeleton
+@onready var bone_head: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/Spine/Chest/Head
+@onready var bone_arm_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmL
+@onready var bone_arm_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR
+@onready var bone_forearm_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmL/ForearmL
+@onready var bone_forearm_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR
+@onready var bone_fist_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmL/ForearmL/FistL
+@onready var bone_fist_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR/FistR
+
 var rage: float = 0.0
 var ko: float = 0.0
 var punches: int = 0
@@ -126,6 +137,8 @@ func _ready() -> void:
 	outline_mat.set_shader_parameter("width", 4.5)
 	body_spr.material = outline_mat
 	head.material = outline_mat
+	# Skin the boss body to the bone skeleton so hits can deform the art.
+	_build_body_mesh()
 	# Cinematic vignette over the world (below the boss + UI, which live in Safe).
 	var vig := ColorRect.new()
 	vig.color = Color(1, 1, 1, 1)
@@ -301,19 +314,27 @@ func _throw_fist(impact: Vector2, side_left: bool, is_head: bool) -> void:
 	f.texture = _fist_tex
 	f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	f.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	f.size = Vector2(300, 300)
+	f.size = Vector2(320, 320)
 	f.pivot_offset = f.size / 2.0
-	f.scale.x = 1.0 if side_left else -1.0  # mirror the fist for the other hand
+	var mirror := 1.0 if side_left else -1.0  # mirror the fist for the other hand
 	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	f.z_index = 80
 	add_child(f)
-	var start: Vector2 = Vector2(-260.0, 1300.0) if side_left else Vector2(2180.0, 1300.0)
+	# First-person punch: the fist thrusts up from the player's side (near the
+	# camera, so it starts large) and fully extends to reach the boss, then
+	# retracts. No detached "flying fist" arcing in from off-screen.
+	var start: Vector2 = Vector2(700.0, 1440.0) if side_left else Vector2(1220.0, 1440.0)
+	var start_scale := 1.4   # close to the viewer at the start of the thrust
+	var reach_scale := 0.95  # arm fully extended toward the boss
+	f.scale = Vector2(mirror * start_scale, start_scale)
 	f.position = start - f.size / 2.0
 	var tw := create_tween()
-	tw.tween_property(f, "position", impact - f.size / 2.0, 0.07).set_ease(Tween.EASE_IN)
+	tw.tween_property(f, "position", impact - f.size / 2.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(f, "scale", Vector2(mirror * reach_scale, reach_scale), 0.09).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func() -> void: _land(impact, is_head, side_left))
-	tw.tween_property(f, "position", start - f.size / 2.0, 0.14).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(f, "modulate:a", 0.0, 0.14)
+	tw.tween_property(f, "position", start - f.size / 2.0, 0.13).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(f, "scale", Vector2(mirror * start_scale, start_scale), 0.13).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(f, "modulate:a", 0.0, 0.13)
 	tw.tween_callback(f.queue_free)
 
 func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
@@ -333,6 +354,10 @@ func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 		rig.position.x = 24.0 if side_left else -24.0
 		var lt := create_tween()
 		lt.tween_property(rig, "position:x", 0.0, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	# The bone skeleton deforms the body: arms shudder outward on impact
+	# (harder on a critical body blow).
+	var crit := _state == BossState.VULNERABLE
+	_jostle_arms((1.0 if crit else 0.6) * (0.7 if is_head else 1.0))
 	if ko >= 100.0:
 		_knockout()
 
@@ -599,6 +624,124 @@ func _set_ko(v: float) -> void:
 func _center_pivot() -> void:
 	# Scale/squash from the boss's feet (bottom-center).
 	rig.pivot_offset = Vector2(rig.size.x / 2.0, rig.size.y)
+
+# --- bone-driven body mesh -------------------------------------------------
+# Replaces the flat Body sprite with a Polygon2D grid skinned to the Skeleton,
+# so moving a bone actually deforms the boss art. Torso / head-area / legs are
+# weighted to bones we leave at rest (they render exactly as the original),
+# while the arm bones can jostle on impact.
+var _body_mesh: Polygon2D
+
+# Rig-local bone segments used to weight the mesh (path is relative to Skeleton).
+const _BONE_SEGS := [
+	["Hip", Vector2(260, 780), Vector2(260, 830)],
+	["Hip/Spine", Vector2(260, 809), Vector2(260, 486)],
+	["Hip/Spine/Chest/Head", Vector2(260, 486), Vector2(260, 150)],
+	["Hip/ArmL", Vector2(122, 486), Vector2(83, 717)],
+	["Hip/ArmL/ForearmL", Vector2(83, 717), Vector2(87, 924)],
+	["Hip/ArmL/ForearmL/FistL", Vector2(87, 924), Vector2(87, 990)],
+	["Hip/ArmR", Vector2(398, 486), Vector2(438, 717)],
+	["Hip/ArmR/ForearmR", Vector2(438, 717), Vector2(433, 924)],
+	["Hip/ArmR/ForearmR/FistR", Vector2(433, 924), Vector2(433, 990)],
+	["Hip/LegL", Vector2(230, 830), Vector2(202, 1201)],
+	["Hip/LegR", Vector2(290, 830), Vector2(313, 1201)],
+]
+
+func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var l2 := ab.length_squared()
+	var t := 0.0
+	if l2 > 0.0:
+		t = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+func _build_body_mesh() -> void:
+	if skel == null or body_spr.texture == null:
+		return
+	var cols := 12
+	var rows := 26
+	# Body sprite rect in Rig-local space (matches the Body TextureRect area).
+	var x0 := 18.0
+	var x1 := 502.0
+	var y0 := 60.0
+	var y1 := 1240.0
+	var tex: Texture2D = body_spr.texture
+	var tw := float(tex.get_width())
+	var th := float(tex.get_height())
+	var verts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	for r in rows + 1:
+		for c in cols + 1:
+			var fx := float(c) / float(cols)
+			var fy := float(r) / float(rows)
+			verts.append(Vector2(lerpf(x0, x1, fx), lerpf(y0, y1, fy)))
+			uvs.append(Vector2(fx * tw, fy * th))
+	# Triangulate the grid.
+	var tris: Array = []
+	for r in rows:
+		for c in cols:
+			var i0 := r * (cols + 1) + c
+			var i2 := i0 + (cols + 1)
+			tris.append(PackedInt32Array([i0, i2, i0 + 1]))
+			tris.append(PackedInt32Array([i0 + 1, i2, i2 + 1]))
+	# Per-vertex bone weights: inverse distance to each bone segment, normalized.
+	var nbones := _BONE_SEGS.size()
+	var weights: Array = []
+	for b in nbones:
+		var wa := PackedFloat32Array()
+		wa.resize(verts.size())
+		weights.append(wa)
+	for vi in verts.size():
+		var p: Vector2 = verts[vi]
+		var raw := PackedFloat32Array()
+		raw.resize(nbones)
+		var total := 0.0
+		for b in nbones:
+			var seg: Array = _BONE_SEGS[b]
+			var d := _seg_dist(p, seg[1], seg[2])
+			var w := 1.0 / pow(d + 8.0, 3.2)
+			raw[b] = w
+			total += w
+		if total <= 0.0:
+			total = 1.0
+		for b in nbones:
+			weights[b][vi] = raw[b] / total
+	# Build the skinned Polygon2D and slot it where the Body sprite was.
+	var poly := Polygon2D.new()
+	poly.name = "BodyMesh"
+	poly.texture = tex
+	poly.polygon = verts
+	poly.uv = uvs
+	poly.polygons = tris
+	poly.internal_vertex_count = 0
+	poly.material = body_spr.material  # keep the outline shader
+	rig.add_child(poly)
+	rig.move_child(poly, body_spr.get_index())
+	poly.skeleton = poly.get_path_to(skel)
+	for b in nbones:
+		poly.add_bone(NodePath(_BONE_SEGS[b][0]), weights[b])
+	body_spr.visible = false
+	_body_mesh = poly
+
+# A hit makes the boss's arms shudder outward via the arm bones, then spring
+# back — the skeleton visibly deforming the body on impact.
+func _jostle_arms(intensity: float) -> void:
+	if skel == null:
+		return
+	var la := deg_to_rad(22.0 * intensity)
+	var lf := deg_to_rad(30.0 * intensity)
+	# Left arm swings out to the boss's left (+), right arm to the right (-).
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(bone_arm_l, "rotation", la, 0.05).set_ease(Tween.EASE_OUT)
+	tw.tween_property(bone_arm_r, "rotation", -la, 0.05).set_ease(Tween.EASE_OUT)
+	tw.tween_property(bone_forearm_l, "rotation", lf, 0.05).set_ease(Tween.EASE_OUT)
+	tw.tween_property(bone_forearm_r, "rotation", -lf, 0.05).set_ease(Tween.EASE_OUT)
+	var back := create_tween()
+	back.set_parallel(true)
+	for bone in [bone_arm_l, bone_arm_r, bone_forearm_l, bone_forearm_r]:
+		back.tween_property(bone, "rotation", 0.0, 0.42) \
+			.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 func _apply_safe_area() -> void:
 	# Safe-area insets only make sense on handhelds. On desktop the "display
