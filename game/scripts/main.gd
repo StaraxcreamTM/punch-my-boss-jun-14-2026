@@ -66,16 +66,15 @@ var torso_spr: Sprite2D
 @onready var bone_foot_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighL/ShinL/FootL
 @onready var bone_foot_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighR/ShinR/FootR
 
-# --- idle / pose state -----------------------------------------------------
-# The idle loop writes bone rotations every frame, so impact reactions can't
-# tween those same properties directly or they'd fight. Instead the reactions
-# tween these offsets and _pose_skeleton() composes idle + reaction each frame.
-var _idle_t: float = 0.0
-var _jostle_arm: float = 0.0
-var _jostle_fore: float = 0.0
-var _hip_rest: Vector2 = Vector2.ZERO
-var _head_rest: Vector2 = Vector2.ZERO
-var _head_hit: Vector2 = Vector2.ZERO
+# --- animation rig ---------------------------------------------------------
+# BossRig owns every bone transform: it composes idle life (breathing, weight
+# shift, blinking, fidgets) with additive offsets from whatever animations are
+# in flight, so a stagger can play on top of breathing without them fighting.
+# Preloaded rather than referenced by class_name: the global class registry
+# lives in .godot/ which is gitignored, so a fresh clone would fail to parse
+# until someone opened the editor.
+const BossRigScript := preload("res://scripts/boss_rig.gd")
+var rig_anim  # BossRig
 
 var rage: float = 0.0
 var punches: int = 0
@@ -195,8 +194,11 @@ func _ready() -> void:
 	# Remember the rest pose so idle motion and hit reactions are offsets from
 	# it rather than absolute positions (the head used to snap to Vector2.ZERO
 	# after a hit, permanently shifting it off its anchored rest spot).
-	_hip_rest = bone_hip.position
-	_head_rest = bone_head.position
+	# The animation rig: owns every bone transform and composes idle motion
+	# with additive animation offsets (see boss_rig.gd).
+	rig_anim = BossRigScript.new()
+	add_child(rig_anim)
+	rig_anim.setup(skel, rig, head)
 	# Cinematic vignette over the world (below the boss + UI, which live in Safe).
 	var vig := ColorRect.new()
 	vig.color = Color(1, 1, 1, 1)
@@ -295,8 +297,9 @@ func _process(delta: float) -> void:
 	if not _koing:
 		_update_fight(delta)
 
-	# Breathing / sway / weight-shift across the whole skeleton.
-	_pose_skeleton(delta)
+	# Idle life + any in-flight animation offsets, composed onto the bones.
+	if rig_anim != null:
+		rig_anim.update(delta)
 
 	# Combo decay + frenzy countdown.
 	if combo_time > 0.0:
@@ -484,24 +487,33 @@ func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 		_crit(impact, text_pos)
 	else:
 		_chip(impact, text_pos)
-	# Directional reaction: the head snaps aside, the body rocks.
-	if is_head:
-		# Offset only — _pose_skeleton adds this to the rest pose. (This used
-		# to write head.position and spring back to Vector2.ZERO, which parked
-		# the head off its anchored rest spot after the very first head hit.)
-		_head_hit = Vector2(34.0 if side_left else -34.0, 6.0)
-		var kt := create_tween()
-		kt.tween_property(self, "_head_hit", Vector2.ZERO, 0.28).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	else:
-		rig.position.x = 24.0 if side_left else -24.0
-		var lt := create_tween()
-		lt.tween_property(rig, "position:x", 0.0, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	# The bone skeleton deforms the body: arms shudder outward on impact
-	# (harder on a critical body blow).
 	var crit := _state == BossState.VULNERABLE or frenzy > 0.0
-	_jostle_arms((1.0 if crit else 0.6) * (0.7 if is_head else 1.0))
+	_react_hit(is_head, side_left, crit)
 	if hp <= 0.0:
 		_knockout()
+
+# Cartoon hit reactions. Chip hits just flinch; criticals roll a big Looney
+# Tunes gag — the head spinning right around, the neck stretching like rubber,
+# or a dazed metronome wobble.
+func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
+	if rig_anim == null:
+		return
+	rig_anim.squash(1.0 if crit else 0.55)
+	if is_head:
+		if crit:
+			match randi() % 3:
+				0:
+					rig_anim.head_spin(randi_range(2, 4))
+				1:
+					rig_anim.neck_stretch(side_left, 1.0)
+				_:
+					rig_anim.wobble_stun(1.3)
+		else:
+			rig_anim.stagger(side_left, 0.7)
+	else:
+		rig_anim.stagger(side_left, 1.0 if crit else 0.55)
+		if crit:
+			rig_anim.knees_buckle(0.9)
 
 func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	# A normal punch while the boss is guarding: small damage, standard juice.
@@ -509,10 +521,7 @@ func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	_punch_player.play()
 	_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.28
-	rig.scale = Vector2(1.18, 0.84)
-	var tw := create_tween()
-	tw.tween_property(rig, "scale", Vector2(0.92, 1.1), 0.08).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(rig, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# (The impact squash now comes from BossRig.squash via _react_hit.)
 	_flash_screen(0.22)
 	_shake(9.0, 0.24)
 	_spawn_text(text_pos, POW_WORDS[randi() % POW_WORDS.size()], 84, Color(1, 0.86, 0.16))
@@ -527,10 +536,7 @@ func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	_punch_player.play()
 	_react_tex = _react[_react.size() - 1 - (randi() % 3)]
 	_react_time = 0.5
-	rig.scale = Vector2(1.35, 0.7)
-	var tw := create_tween()
-	tw.tween_property(rig, "scale", Vector2(0.82, 1.2), 0.09).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(rig, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	# (The impact squash now comes from BossRig.squash via _react_hit.)
 	_flash_screen(0.55)
 	_shake(26.0, 0.45)
 	_zoom_punch(0.06)
@@ -594,10 +600,10 @@ func _update_fight(delta: float) -> void:
 			_position_prompt(pv)
 			if _state_time <= 0.0:
 				_enter_guard()
-	# Feet stay planted: no vertical bob. Life comes from a gentle sway that
-	# pivots around the feet (and the wind-up lean, which also pivots at the feet).
-	rig.position.y = 0.0
-	rig.rotation = sin(_clock * 1.3) * 0.02 + lean
+	# The wind-up lean feeds BossRig as a body offset — writing rig.rotation
+	# here directly would be overwritten by the rig's own compose pass.
+	if rig_anim != null:
+		rig_anim.lean = lean
 	boss.modulate = tint
 
 func _position_prompt(p: float) -> void:
@@ -631,6 +637,11 @@ func _knockout() -> void:
 	_flash_screen(0.85)
 	_shake(42.0, 0.7)
 	_zoom_punch(0.1)
+	# The launch cutscene drives the rig Control itself, so take the body away
+	# from BossRig for the duration or the two will fight over the transform.
+	if rig_anim != null:
+		rig_anim.own_body = false
+		rig_anim.idle_enabled = false
 
 	# Freeze on impact, then drop into slow-mo for the launch.
 	Engine.time_scale = 0.001
@@ -671,15 +682,18 @@ func _knockout() -> void:
 	frenzy = 0.0
 	_react_time = 0.0
 	# Clear pose offsets so he comes back standing straight.
-	_head_hit = Vector2.ZERO
-	_jostle_arm = 0.0
-	_jostle_fore = 0.0
+	if rig_anim != null:
+		rig_anim.revive()
+		rig_anim.lean = 0.0
 	rig.rotation = 0.0
 	rig.scale = Vector2.ONE
 	rig.position = Vector2(0.0, 1700.0)  # start below the desk
 	var back := create_tween()
 	back.tween_property(rig, "position", Vector2.ZERO, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await back.finished
+	# Hand the body transform back to the rig now the cutscene is done.
+	if rig_anim != null:
+		rig_anim.own_body = true
 
 	# Round banner.
 	ko_banner.text = "ROUND %d" % round_num
@@ -887,71 +901,6 @@ func _part_global_rect(s: Sprite2D) -> Rect2:
 	var sz: Vector2 = s.texture.get_size() * PART_SCALE
 	return Rect2(s.get_global_transform() * Vector2.ZERO, sz * boss.scale)
 
-
-# Idle life: the boss breathes, shifts his weight and lets his arms hang and
-# swing. Runs every frame and owns every bone rotation, so impact reactions
-# feed in through _jostle_arm / _jostle_fore rather than tweening bones directly.
-func _pose_skeleton(delta: float) -> void:
-	if skel == null:
-		return
-	_idle_t += delta
-	# Two waves: a breath, and a slower weight shift from foot to foot.
-	var breath := sin(_idle_t * 1.9)
-	var sway := sin(_idle_t * 0.72)
-	var trail := sin(_idle_t * 0.72 + 0.9)   # limbs lag the torso slightly
-	# He gets visibly more agitated as he winds up and while he's open.
-	var amp := 1.0
-	if _state == BossState.WINDUP:
-		amp = 1.7
-	elif _state == BossState.VULNERABLE:
-		amp = 2.2
-
-	# Hips carry the weight shift; the torso counter-rotates so it reads as
-	# shifting weight rather than the whole figure sliding sideways.
-	bone_hip.position = _hip_rest + Vector2(sway * 5.0 * amp, -breath * 2.0)
-	bone_hip.rotation = sway * 0.018 * amp
-	bone_spine.rotation = -sway * 0.026 * amp + breath * 0.008
-	bone_chest.rotation = -sway * 0.014 * amp + breath * 0.012
-	bone_head.rotation = sway * 0.030 * amp - breath * 0.010
-
-	# Arms hang and swing, opposite phase per side, with the impact shudder
-	# layered on top. Hands trail the forearms by a beat.
-	bone_arm_l.rotation = sway * 0.055 * amp + _jostle_arm
-	bone_arm_r.rotation = -sway * 0.055 * amp - _jostle_arm
-	bone_forearm_l.rotation = trail * 0.045 * amp + _jostle_fore
-	bone_forearm_r.rotation = -trail * 0.045 * amp - _jostle_fore
-	bone_fist_l.rotation = sin(_idle_t * 0.72 + 1.6) * 0.05 * amp
-	bone_fist_r.rotation = -sin(_idle_t * 0.72 + 1.6) * 0.05 * amp
-
-	# The weight shift travels down the legs; knees and ankles absorb it.
-	bone_thigh_l.rotation = -sway * 0.020 * amp
-	bone_thigh_r.rotation = -sway * 0.020 * amp
-	bone_shin_l.rotation = sway * 0.014 * amp
-	bone_shin_r.rotation = sway * 0.014 * amp
-	bone_foot_l.rotation = -sway * 0.010 * amp
-	bone_foot_r.rotation = -sway * 0.010 * amp
-
-	# The head cutout hangs off the Head bone, so moving the bone moves it. The
-	# knock from a head hit is layered on as a bone offset.
-	bone_head.position = _head_rest + _head_hit + Vector2(sway * 3.0 * amp, -breath * 2.0)
-
-# A hit makes the boss's arms shudder outward, then spring back. These feed
-# _pose_skeleton as offsets rather than writing bone rotations directly.
-func _jostle_arms(intensity: float) -> void:
-	if skel == null:
-		return
-	var la := deg_to_rad(22.0 * intensity)
-	var lf := deg_to_rad(30.0 * intensity)
-	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(self, "_jostle_arm", la, 0.05).set_ease(Tween.EASE_OUT)
-	tw.tween_property(self, "_jostle_fore", lf, 0.05).set_ease(Tween.EASE_OUT)
-	var back := create_tween()
-	back.set_parallel(true)
-	back.tween_property(self, "_jostle_arm", 0.0, 0.42) \
-		.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	back.tween_property(self, "_jostle_fore", 0.0, 0.42) \
-		.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 func _apply_safe_area() -> void:
 	# Safe-area insets only make sense on handhelds. On desktop the "display
