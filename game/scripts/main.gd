@@ -97,7 +97,7 @@ const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
 # --- screens / phases ------------------------------------------------------
-enum Phase { TITLE, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
 var phase: int = Phase.TITLE
 var _screen: Control
 var _screen_dim: ColorRect
@@ -506,6 +506,7 @@ func _ready() -> void:
 	_apply_portrait()
 	apply_look()
 	_build_screens()
+	_build_menu_ui()
 	_show_title()
 
 	var taunt_timer := Timer.new()
@@ -669,7 +670,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			var mp := get_global_mouse_position()
-			if phase != Phase.FIGHT:
+			if phase in [Phase.MENU, Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS]:
+				pass          # menu buttons handle their own taps
+			elif phase != Phase.FIGHT:
 				if event.pressed:
 					_advance_screen()
 			elif _gimmick() == "throw":
@@ -1615,6 +1618,33 @@ func _setup_shots() -> void:
 	dm.timeout.connect(_demo_tick)
 	add_child(dm)
 
+var _tour: int = 0
+
+func _demo_tour() -> void:
+	match phase:
+		Phase.TITLE:
+			open_menu(Phase.MENU)
+		Phase.MENU:
+			_tour += 1
+			match _tour:
+				1:
+					open_menu(Phase.LEVELS)
+				2:
+					open_menu(Phase.CUSTOMIZE)
+				3:
+					open_menu(Phase.OPTIONS)
+				_:
+					_on_play()
+		Phase.LEVELS, Phase.OPTIONS:
+			open_menu(Phase.MENU)
+		Phase.CUSTOMIZE:
+			# Exercise the cycle buttons before moving on.
+			cycle_look("hair")
+			cycle_look("moustache")
+			open_menu(Phase.MENU)
+		_:
+			_advance_screen()
+
 func _take_shot() -> void:
 	# Guard: the timer can fire again during the await below, which produced a
 	# stray extra frame and a duplicate "done" line.
@@ -1635,10 +1665,10 @@ func _take_shot() -> void:
 func _demo_tick() -> void:
 	if _koing:
 		return
-	# Walk the screen flow (title -> prefight -> fight) so the filmstrip covers
-	# the menus as well as combat.
+	# Walk the whole front end so the filmstrip covers every screen, not just
+	# combat: title -> menu -> levels -> customise -> options -> play.
 	if phase != Phase.FIGHT:
-		_advance_screen()
+		_demo_tour()
 		return
 	_demo_step += 1
 	# Gimmick levels need their own scripted play.
@@ -1789,6 +1819,7 @@ func _load_prefs() -> void:
 	if cfg.load(SAVE_PATH) != OK:
 		return
 	best_score = int(cfg.get_value("score", "best", 0))
+	unlocked = maxi(1, int(cfg.get_value("score", "unlocked", 1)))
 	stat_punches = int(cfg.get_value("stats", "punches", 0))
 	stat_damage = int(cfg.get_value("stats", "damage", 0))
 	stat_kos = int(cfg.get_value("stats", "kos", 0))
@@ -1808,6 +1839,7 @@ func _load_prefs() -> void:
 func _save_prefs() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("score", "best", best_score)
+	cfg.set_value("score", "unlocked", unlocked)
 	cfg.set_value("stats", "punches", stat_punches)
 	cfg.set_value("stats", "damage", stat_damage)
 	cfg.set_value("stats", "kos", stat_kos)
@@ -1889,7 +1921,7 @@ func _show_title() -> void:
 		_screen_sub.text += "
 %d punches thrown   ·   %d damage   ·   %d K.O.s" % [
 			stat_punches, stat_damage, stat_kos]
-	_screen_hint.text = "%s\n\n1 / 2 / 3 pick difficulty  ·  tap or press any key to start" % _difficulty_name()
+	_screen_hint.text = "tap to continue"
 	if rig_anim != null:
 		rig_anim.taunt()
 
@@ -1911,6 +1943,7 @@ func _difficulty_name() -> String:
 
 # The pre-fight beat: he gets a line in before the bell.
 func _start_prefight() -> void:
+	close_menu()
 	phase = Phase.PREFIGHT
 	_set_hud_visible(false)
 	boss_line.get_parent().visible = true      # he gets a line in first
@@ -1932,6 +1965,7 @@ func _start_prefight() -> void:
 		rig_anim.point_at_player()
 
 func _start_fight() -> void:
+	close_menu()
 	phase = Phase.FIGHT
 	_set_hud_visible(true)
 	boss_line.get_parent().visible = true
@@ -1966,6 +2000,7 @@ func _start_fight() -> void:
 		_enter_guard()
 
 func _show_gameover(won: bool) -> void:
+	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)
 	_save_prefs()
@@ -1982,18 +2017,20 @@ func _show_gameover(won: bool) -> void:
 func _advance_screen() -> void:
 	match phase:
 		Phase.TITLE:
-			_start_prefight()
+			open_menu(Phase.MENU)
 		Phase.PREFIGHT:
 			_start_fight()
 		Phase.VICTORY:
 			level = mini(level + 1, LEVELS.size())
+			unlocked = maxi(unlocked, level)
+			_save_prefs()
 			score = 0
 			_score_shown = 0.0
-			_start_prefight()
+			open_menu(Phase.MENU)
 		Phase.GAMEOVER:
 			score = 0
 			_score_shown = 0.0
-			_start_prefight()
+			open_menu(Phase.MENU)
 		_:
 			pass
 
@@ -2807,3 +2844,267 @@ func play_entrance() -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await tw.finished
 	set_pose("guard" if has_pose("guard") else "")
+
+# --- menu system ------------------------------------------------------------
+# Touch-first: every row is a full-width button with a large tap target, since
+# Android is the target and thumbs are imprecise. The title screen is the front
+# door; everything else hangs off the main menu.
+const MENU_ROW_H := 108.0
+const MENU_W := 1120.0
+
+var _menu: Control
+var _menu_dim: ColorRect
+var _menu_title: Label
+var _menu_rows: VBoxContainer
+var _menu_back: Button
+var unlocked: int = 1          # highest level reached, persisted
+
+func _build_menu_ui() -> void:
+	_menu = Control.new()
+	_menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu.z_index = 95
+	_menu.visible = false
+	add_child(_menu)
+
+	_menu_dim = ColorRect.new()
+	_menu_dim.color = Color(0.05, 0.03, 0.08, 0.86)
+	_menu_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu.add_child(_menu_dim)
+
+	_menu_title = _big_label(88, Color(1, 0.86, 0.16), -0.02)
+	_menu_title.offset_top = 70.0
+	_menu_title.offset_bottom = 190.0
+	_menu.add_child(_menu_title)
+
+	_menu_rows = VBoxContainer.new()
+	_menu_rows.add_theme_constant_override("separation", 16)
+	_menu_rows.anchor_left = 0.5
+	_menu_rows.anchor_right = 0.5
+	_menu_rows.offset_left = -MENU_W * 0.5
+	_menu_rows.offset_right = MENU_W * 0.5
+	_menu_rows.offset_top = 215.0
+	_menu.add_child(_menu_rows)
+
+	_menu_back = _menu_button("< BACK", Color(0.35, 0.33, 0.42))
+	_menu_back.anchor_top = 1.0
+	_menu_back.anchor_bottom = 1.0
+	_menu_back.anchor_left = 0.5
+	_menu_back.anchor_right = 0.5
+	_menu_back.offset_left = -260.0
+	_menu_back.offset_right = 260.0
+	_menu_back.offset_top = -152.0
+	_menu_back.offset_bottom = -152.0 + MENU_ROW_H
+	_menu_back.pressed.connect(_menu_back_pressed)
+	_menu.add_child(_menu_back)
+
+func _menu_button(text: String, col: Color = Color(0.20, 0.45, 0.85)) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, MENU_ROW_H)
+	b.add_theme_font_size_override("font_size", 44)
+	b.add_theme_color_override("font_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
+	b.add_theme_color_override("font_disabled_color", Color(0.66, 0.64, 0.72))
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = col
+	sb.set_corner_radius_all(22)
+	sb.set_border_width_all(5)
+	sb.border_color = Color(1, 1, 1, 0.85)
+	sb.content_margin_left = 30.0
+	sb.content_margin_right = 30.0
+	b.add_theme_stylebox_override("normal", sb)
+	var hv: StyleBoxFlat = sb.duplicate()
+	hv.bg_color = col.lightened(0.14)
+	b.add_theme_stylebox_override("hover", hv)
+	var pr: StyleBoxFlat = sb.duplicate()
+	pr.bg_color = col.darkened(0.22)
+	b.add_theme_stylebox_override("pressed", pr)
+	var ds: StyleBoxFlat = sb.duplicate()
+	ds.bg_color = Color(0.17, 0.16, 0.21)
+	ds.border_color = Color(1, 1, 1, 0.22)
+	b.add_theme_stylebox_override("disabled", ds)
+	return b
+
+func _clear_rows() -> void:
+	for c in _menu_rows.get_children():
+		_menu_rows.remove_child(c)
+		c.queue_free()
+
+func open_menu(kind: int) -> void:
+	phase = kind
+	_set_hud_visible(false)
+	boss_line.get_parent().visible = false
+	_screen.visible = false
+	_menu.visible = true
+	_clear_rows()
+	_menu_rows.add_theme_constant_override("separation", 16)
+	_menu_rows.offset_top = 215.0
+	# Customise wants the boss visible behind it; the rest dim him right out.
+	var a := 0.42 if kind == Phase.CUSTOMIZE else 0.86
+	_menu_dim.color = Color(0.05, 0.03, 0.08, a)
+	_menu_back.visible = kind != Phase.MENU
+	match kind:
+		Phase.MENU:
+			_populate_main()
+		Phase.LEVELS:
+			_populate_levels()
+		Phase.CUSTOMIZE:
+			_populate_customize()
+		Phase.OPTIONS:
+			_populate_options()
+
+func close_menu() -> void:
+	_menu.visible = false
+
+func _menu_back_pressed() -> void:
+	if phase != Phase.MENU:
+		open_menu(Phase.MENU)
+
+func _populate_main() -> void:
+	_menu_title.text = "PUNCH MY BOSS"
+	var play := _menu_button("PLAY   -   LEVEL %d" % level, Color(0.20, 0.70, 0.25))
+	play.pressed.connect(_on_play)
+	_menu_rows.add_child(play)
+	var lv := _menu_button("LEVEL SELECT")
+	lv.pressed.connect(func() -> void: open_menu(Phase.LEVELS))
+	_menu_rows.add_child(lv)
+	var cu := _menu_button("CUSTOMISE YOUR BOSS", Color(0.62, 0.28, 0.72))
+	cu.pressed.connect(func() -> void: open_menu(Phase.CUSTOMIZE))
+	_menu_rows.add_child(cu)
+	var op := _menu_button("OPTIONS", Color(0.35, 0.33, 0.42))
+	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
+	_menu_rows.add_child(op)
+	var st := Label.new()
+	st.text = "BEST %d      %d punches thrown      %d K.O.s" % [best_score, stat_punches, stat_kos]
+	st.add_theme_font_size_override("font_size", 32)
+	st.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
+	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	st.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	st.custom_minimum_size = Vector2(0, 96)
+	_menu_rows.add_child(st)
+
+func _on_play() -> void:
+	close_menu()
+	_start_prefight()
+
+func _populate_levels() -> void:
+	_menu_title.text = "LEVEL SELECT"
+	_menu_rows.add_theme_constant_override("separation", 10)
+	_menu_rows.offset_top = 200.0
+	for i in LEVELS.size():
+		var n := i + 1
+		var cfg: Dictionary = LEVELS[i]
+		var who := "Your Boss"
+		var r: Dictionary = ROSTER.get(n, {})
+		if not r.is_empty():
+			who = String(r.get("who", who))
+		var locked := n > unlocked
+		var label := "%d.  %s  -  %s" % [n, String(cfg.get("name", "")), who]
+		if locked:
+			label = "%d.   L O C K E D" % n
+		var col := Color(0.20, 0.45, 0.85)
+		if locked:
+			col = Color(0.17, 0.16, 0.21)
+		elif n == level:
+			col = Color(0.20, 0.70, 0.25)
+		var b := _menu_button(label, col)
+		b.add_theme_font_size_override("font_size", 30)
+		# 9 rows at the default height overflowed the screen: rows 8-9 fell off
+		# the bottom and BACK sat on top of row 7.
+		b.custom_minimum_size = Vector2(0, 70)
+		b.disabled = locked
+		if not locked:
+			b.pressed.connect(_on_pick_level.bind(n))
+		_menu_rows.add_child(b)
+
+func _on_pick_level(n: int) -> void:
+	level = n
+	close_menu()
+	_start_prefight()
+
+func _populate_customize() -> void:
+	_menu_title.text = "CUSTOMISE"
+	if not is_customisable():
+		var note := _menu_button("This opponent uses their own artwork.", Color(0.24, 0.22, 0.30))
+		note.add_theme_font_size_override("font_size", 34)
+		note.disabled = true
+		_menu_rows.add_child(note)
+		return
+	_add_cycle_row("SKIN", "skin")
+	_add_cycle_row("HAIR", "hair")
+	_add_cycle_row("MOUSTACHE", "moustache")
+
+func _look_value(what: String) -> String:
+	match what:
+		"skin":
+			return "%d of %d" % [look_skin + 1, SKIN_TONES.size()]
+		"hair":
+			return _opt_name(HAIR_OPTS[posmod(look_hair, HAIR_OPTS.size())])
+		_:
+			return _opt_name(MOUSTACHE_OPTS[posmod(look_moustache, MOUSTACHE_OPTS.size())])
+
+func _opt_name(s: String) -> String:
+	if s == "":
+		return "NONE"
+	return s.replace("hair_", "").replace("mustache_", "").replace("mustache", "PLAIN").to_upper()
+
+func _add_cycle_row(title: String, what: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	row.custom_minimum_size = Vector2(0, MENU_ROW_H)
+	var lbl := _menu_button("%s:  %s" % [title, _look_value(what)], Color(0.24, 0.22, 0.30))
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.disabled = true
+	row.add_child(lbl)
+	var nxt := _menu_button("NEXT", Color(0.62, 0.28, 0.72))
+	nxt.custom_minimum_size = Vector2(300, MENU_ROW_H)
+	nxt.pressed.connect(_on_cycle.bind(what, title, lbl))
+	row.add_child(nxt)
+	_menu_rows.add_child(row)
+
+func _on_cycle(what: String, title: String, lbl: Button) -> void:
+	cycle_look(what)
+	if is_instance_valid(lbl):
+		lbl.text = "%s:  %s" % [title, _look_value(what)]
+
+func _populate_options() -> void:
+	_menu_title.text = "OPTIONS"
+	var mus := _menu_button("MUSIC:  %s" % ("ON" if music_on else "OFF"),
+		Color(0.20, 0.70, 0.25) if music_on else Color(0.35, 0.33, 0.42))
+	mus.pressed.connect(_on_toggle_music)
+	_menu_rows.add_child(mus)
+
+	var hap := _menu_button("VIBRATION:  %s" % ("ON" if haptics_on else "OFF"),
+		Color(0.20, 0.70, 0.25) if haptics_on else Color(0.35, 0.33, 0.42))
+	hap.pressed.connect(_on_toggle_haptics)
+	_menu_rows.add_child(hap)
+
+	var names := ["PUNCHING BAG", "DEFENSIVE", "BRAWLER"]
+	var dif := _menu_button("DIFFICULTY:  %s" % names[clampi(difficulty, 0, 2)])
+	dif.pressed.connect(_on_cycle_difficulty)
+	_menu_rows.add_child(dif)
+
+	var hint := Label.new()
+	hint.text = "Punching Bag - he never fights back.\nDefensive - he guards, but won't swing.\nBrawler - he hits back, so dodge."
+	hint.add_theme_font_size_override("font_size", 30)
+	hint.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.custom_minimum_size = Vector2(0, 160)
+	_menu_rows.add_child(hint)
+
+func _on_toggle_music() -> void:
+	toggle_music()
+	open_menu(Phase.OPTIONS)
+
+func _on_toggle_haptics() -> void:
+	haptics_on = not haptics_on
+	_save_prefs()
+	open_menu(Phase.OPTIONS)
+
+func _on_cycle_difficulty() -> void:
+	difficulty = (difficulty + 1) % 3
+	_save_prefs()
+	open_menu(Phase.OPTIONS)
