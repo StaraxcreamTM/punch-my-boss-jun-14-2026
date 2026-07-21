@@ -544,3 +544,73 @@ func shock_hop(power: float = 1.0) -> void:
 	tw.tween_property(self, "body_pos", Vector2.ZERO, 0.26).set_trans(Tween.TRANS_BOUNCE)
 	pose({"uarmL": 1.3, "uarmR": -1.3, "farmL": 0.6, "farmR": -0.6,
 		"thighL": -0.3, "thighR": 0.3, "head": -0.15}, 0.12, 0.10, 0.32)
+
+
+# --- more offense --------------------------------------------------------
+# Distinct attacks so each level's boss reads differently, not just faster.
+
+# Overhead smash: winds up high, comes straight down.
+func overhead(side_left: bool) -> void:
+	var u := "uarmL" if side_left else "uarmR"
+	var f := "farmL" if side_left else "farmR"
+	var s := 1.0 if side_left else -1.0
+	pose({u: -2.4 * s, f: -0.9 * s, "chest": 0.18 * s}, 0.16)
+	var t2 := create_tween()
+	t2.tween_interval(0.16)
+	t2.tween_callback(func() -> void:
+		pose({u: 1.7 * s, f: 0.5 * s, "chest": -0.30 * s, "spine": -0.16 * s},
+			0.08, 0.06, 0.34))
+	var tb := create_tween()
+	tb.tween_interval(0.16)
+	tb.tween_property(self, "body_pos", Vector2(0.0, 34.0), 0.08)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.30).set_trans(Tween.TRANS_BACK)
+
+# Double jab: two quick straight shots off the same arm.
+func double_jab(side_left: bool) -> void:
+	var u := "uarmL" if side_left else "uarmR"
+	var s := 1.0 if side_left else -1.0
+	var tw := create_tween()
+	for i in 2:
+		tw.tween_method(func(v: float) -> void: _rot[u] = v, 0.0, 1.35 * s, 0.07) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_method(func(v: float) -> void: _rot[u] = v, 1.35 * s, 0.15 * s, 0.09)
+	tw.tween_method(func(v: float) -> void: _rot[u] = v, _rot[u], 0.0, 0.22) \
+		.set_trans(Tween.TRANS_ELASTIC)
+
+# Wild haymaker: huge telegraphed wind-around.
+func haymaker(side_left: bool) -> void:
+	var u := "uarmL" if side_left else "uarmR"
+	var f := "farmL" if side_left else "farmR"
+	var s := 1.0 if side_left else -1.0
+	var tw := create_tween()
+	tw.tween_method(func(v: float) -> void: _rot[u] = v, 0.0, -TAU * 0.9 * s, 0.26) \
+		.set_trans(Tween.TRANS_QUAD)
+	tw.tween_method(func(v: float) -> void: _rot[u] = v, -TAU * 0.9 * s, 2.1 * s, 0.09) \
+		.set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(v: float) -> void: _rot[u] = v, 2.1 * s, 0.0, 0.36) \
+		.set_trans(Tween.TRANS_ELASTIC)
+	pose({f: 1.0 * s, "chest": -0.38 * s, "hip": -0.2 * s}, 0.30, 0.05, 0.36)
+	var tb := create_tween()
+	tb.tween_interval(0.26)
+	tb.tween_property(self, "body_rot", -0.22 * s, 0.09)
+	tb.tween_property(self, "body_rot", 0.0, 0.34).set_trans(Tween.TRANS_ELASTIC)
+
+# A feint: he starts the tell then aborts it. Bait for a panic dodge.
+func feint(side_left: bool) -> void:
+	var u := "uarmL" if side_left else "uarmR"
+	var s := 1.0 if side_left else -1.0
+	pose({u: -0.8 * s, "chest": 0.12 * s}, 0.12, 0.05, 0.20)
+	var tb := create_tween()
+	tb.tween_property(self, "body_pos", Vector2(12.0 * s, 0.0), 0.12)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.18)
+
+# Charging shoulder barge across the floor.
+func barge(side_left: bool) -> void:
+	var s := 1.0 if side_left else -1.0
+	pose({"chest": -0.30 * s, "spine": -0.2 * s, "head": -0.15 * s,
+		"uarmL": 0.7, "uarmR": -0.7}, 0.10, 0.10, 0.34)
+	var tb := create_tween()
+	tb.tween_property(self, "body_pos", Vector2(-120.0 * s, 0.0), 0.13) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tb.tween_interval(0.06)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.34).set_trans(Tween.TRANS_BACK)

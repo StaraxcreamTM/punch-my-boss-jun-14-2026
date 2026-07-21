@@ -168,6 +168,7 @@ var _atk_side: bool = true
 var _atk_kind: int = 0        # 0 jab, 1 hook, 2 uppercut
 var _atk_resolved: bool = false
 var _atk_whiffed: bool = false
+var _is_feint: bool = false
 
 # Player side of the exchange.
 var player_hp_max: float = 100.0
@@ -222,6 +223,19 @@ func _say_line(cat: String, pool: Array, force: bool = false) -> void:
 	if not force and _type_shown < float(_type_full.length()):
 		return   # let the current line finish
 	_say(_line(cat, pool))
+
+# Which attacks each level's boss actually throws. Later levels don't just
+# telegraph faster - they bring different attacks, so the read changes too.
+# 0 jab, 1 hook, 2 uppercut, 3 overhead, 4 double jab, 5 haymaker, 6 barge
+const LEVEL_ATTACKS := {
+	1: [0, 0, 1],
+	2: [0, 1, 1, 2],
+	3: [0, 1, 2, 4, 6],
+	4: [1, 2, 3, 4, 5, 6],
+}
+
+func _attack_set() -> Array:
+	return LEVEL_ATTACKS.get(level, [0, 1, 2])
 
 func _level_cfg() -> Dictionary:
 	return LEVELS[clampi(level - 1, 0, LEVELS.size() - 1)]
@@ -877,6 +891,11 @@ func _update_fight(delta: float) -> void:
 				else:
 					_enter_windup()
 		BossState.WINDUP:
+			if _is_feint and _state_time <= 0.0:
+				# Aborted swing - straight back to guard, no attack.
+				_spawn_text(_text_anchor(_atk_side), "FEINT!", 60, Color(1, 0.62, 0.2))
+				_enter_guard()
+				return
 			# Lean back + pulse orange so the "tell" is unmistakable.
 			var t := 1.0 - clampf(_state_time / _windup_dur(), 0.0, 1.0)
 			lean = -0.22 * t
@@ -936,12 +955,19 @@ func _enter_windup() -> void:
 	_shake(4.0, 0.2)
 	# Pick the attack now so the tell can match the side it comes from.
 	_atk_side = randf() < 0.5
-	_atk_kind = randi() % 3
+	var set_: Array = _attack_set()
+	_atk_kind = int(set_[randi() % set_.size()])
+	# Feints appear from level 2 on: he starts the tell then aborts, baiting a
+	# panic dodge. The dodge window is short enough that wasting one hurts.
+	_is_feint = level >= 2 and randf() < 0.18
 	_atk_resolved = false
 	_atk_whiffed = false
 	if rig_anim != null:
 		rig_anim.unblock()
-		rig_anim.tell(_atk_side, _windup_dur())
+		if _is_feint:
+			rig_anim.feint(_atk_side)
+		else:
+			rig_anim.tell(_atk_side, _windup_dur())
 
 func _enter_attack() -> void:
 	_state = BossState.ATTACK
@@ -952,15 +978,32 @@ func _enter_attack() -> void:
 				rig_anim.jab(_atk_side)
 			1:
 				rig_anim.hook(_atk_side)
-			_:
+			2:
 				rig_anim.uppercut(_atk_side)
+			3:
+				rig_anim.overhead(_atk_side)
+			4:
+				rig_anim.double_jab(_atk_side)
+			5:
+				rig_anim.haymaker(_atk_side)
+			_:
+				rig_anim.barge(_atk_side)
 
 # Did the player dodge in time? A dodge in any direction beats a jab/hook; the
 # uppercut has to be dodged sideways (ducking into it is exactly wrong).
 func _resolve_attack() -> void:
 	var dodged := _dodge_time > 0.0
-	if dodged and _atk_kind == 2 and _dodge_dir == 0:
-		dodged = false
+	# Attack-specific dodge rules, so reading WHICH attack matters:
+	#   uppercut  - ducking into it is exactly wrong
+	#   overhead  - must be ducked; stepping aside won't clear it
+	#   barge     - must be sidestepped; ducking gets you run over
+	if dodged:
+		if _atk_kind == 2 and _dodge_dir == 0:
+			dodged = false
+		elif _atk_kind == 3 and _dodge_dir != 0:
+			dodged = false
+		elif _atk_kind == 6 and _dodge_dir == 0:
+			dodged = false
 	if dodged:
 		_atk_whiffed = true
 		_spawn_text(_text_anchor(not _atk_side), "MISS!", 72, Color(0.6, 1.0, 0.7))
