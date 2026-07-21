@@ -1,14 +1,21 @@
 extends Control
 
-# Punch My Boss — v0.3.
-# The boss is now the real claymation character from the prototype: a body with a
-# head that swaps expression — neutral, "talk" mouth movement while taunting, and a
-# random hurt face on every punch. Meters, dialogue and procedural sound carry over.
+# Punch My Boss — v0.14: core gameplay loop.
+# Click/tap the boss anywhere to punch him (A/B/X/Y still work). He has real HP
+# that drains with damage numbers, hits chain into combos that multiply damage,
+# filling the FRENZY meter triggers a frenzy where everything crits, and emptying his HP
+# triggers the K.O. launch. Each round he returns with more HP.
+# (Mechanics mirror the browser build in punch-my-boss-2.html.)
 
 const OPENERS := [
 	"Hey, yeah... I'm gonna need those reports. And your whole weekend. Mmkay?",
 	"So. Your numbers. They're... not great. Let's talk about your 'commitment'.",
 	"Quick one — I'm taking credit for your project in the board meeting. Cool? Cool.",
+]
+const ROUND_LINES := [
+	"He's back. And he brought a PIP.",
+	"Back from the 'leadership retreat'. Angrier.",
+	"New quarter. Same boss. More HP.",
 ]
 const TAUNTS := [
 	"Mmyeah, I'm gonna have to disagree with you there, champ.",
@@ -22,7 +29,12 @@ const TAUNTS := [
 
 @onready var boss: Control = $Safe/Boss
 @onready var rig: Control = $Safe/Boss/Rig
-@onready var head: TextureRect = $Safe/Boss/Rig/Head
+# The old flat claymation TextureRects (Body/Head) are hidden at startup; the
+# sliced cutout rig in assets/boss2 replaces them. `head` and `torso_spr` are
+# the cutout pieces used as hit targets and for expression swaps.
+@onready var old_head: TextureRect = $Safe/Boss/Rig/Head
+var head: Sprite2D
+var torso_spr: Sprite2D
 @onready var rage_fill: Panel = $Safe/RageTrack/RageFill
 @onready var ko_fill: Panel = $Safe/KoTrack/KoFill
 @onready var boss_line: Label = $Safe/Bubble/BossLine
@@ -33,9 +45,13 @@ const TAUNTS := [
 @onready var office: TextureRect = $Office
 @onready var body_spr: TextureRect = $Safe/Boss/Rig/Body
 
-# Bone skeleton (rest pose over the boss). Not bound to the art yet — these
-# handles let future animations rotate the head / arms / fists. See main.tscn.
+# Bone skeleton. _build_cutout_boss() hangs one sliced art piece off each bone,
+# so rotating a bone swings that limb and everything below it. Full chain:
+# hips -> torso -> head, upper arm -> forearm -> hand, thigh -> shin -> foot.
 @onready var skel: Skeleton2D = $Safe/Boss/Rig/Skeleton
+@onready var bone_hip: Bone2D = $Safe/Boss/Rig/Skeleton/Hip
+@onready var bone_spine: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/Spine
+@onready var bone_chest: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/Spine/Chest
 @onready var bone_head: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/Spine/Chest/Head
 @onready var bone_arm_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmL
 @onready var bone_arm_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR
@@ -43,19 +59,52 @@ const TAUNTS := [
 @onready var bone_forearm_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR
 @onready var bone_fist_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmL/ForearmL/FistL
 @onready var bone_fist_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR/FistR
+@onready var bone_thigh_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighL
+@onready var bone_thigh_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighR
+@onready var bone_shin_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighL/ShinL
+@onready var bone_shin_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighR/ShinR
+@onready var bone_foot_l: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighL/ShinL/FootL
+@onready var bone_foot_r: Bone2D = $Safe/Boss/Rig/Skeleton/Hip/ThighR/ShinR/FootR
+
+# --- idle / pose state -----------------------------------------------------
+# The idle loop writes bone rotations every frame, so impact reactions can't
+# tween those same properties directly or they'd fight. Instead the reactions
+# tween these offsets and _pose_skeleton() composes idle + reaction each frame.
+var _idle_t: float = 0.0
+var _jostle_arm: float = 0.0
+var _jostle_fore: float = 0.0
+var _hip_rest: Vector2 = Vector2.ZERO
+var _head_rest: Vector2 = Vector2.ZERO
+var _head_hit: Vector2 = Vector2.ZERO
 
 var rage: float = 0.0
-var ko: float = 0.0
 var punches: int = 0
+
+# --- HP / rounds / combo / frenzy (the core loop) ---
+var round_num: int = 1
+var hp_max: float = 120.0
+var hp: float = 120.0
+var combo: int = 0
+var combo_time: float = 0.0
+var max_combo: int = 0
+var crits: int = 0
+var frenzy: float = 0.0
+var _combo_label: Label
+const COMBO_WINDOW := 0.95
+const ROUND_HP_SCALE := 1.4
 
 # typewriter
 var _type_full: String = ""
 var _type_shown: float = 0.0
 const TYPE_CPS: float = 34.0
 
-# head expressions
-var _tex_neutral: Texture2D = load("res://assets/boss/neutral.png")
-var _tex_talk: Texture2D = load("res://assets/boss/talk.png")
+# Head expressions, cut from the cartoon pose set and all normalised onto one
+# 460x500 canvas with the neck at (230,470), so swapping textures never shifts
+# the head. Reaction faces run mild -> dazed: black eye, glasses-off, then the
+# spiral-eyed dizzy faces.
+var _tex_neutral: Texture2D = load("res://assets/boss2/heads/neutral.png")
+var _tex_talk: Texture2D = load("res://assets/boss2/heads/talk.png")
+const REACT_FACES := ["hurt0", "hurt1", "hurt2", "dizzy0", "dizzy1", "dizzy2", "dizzy3"]
 var _react: Array[Texture2D] = []
 var _react_tex: Texture2D
 var _react_time: float = 0.0
@@ -83,16 +132,21 @@ const WINDUP_DUR := 0.55
 const VULN_DUR := 1.35
 
 # --- controls / attacks ---
-var _fist_tex: Texture2D = load("res://assets/boss/fist.png")
+# The player's fist: the red boxing glove lifted from the cartoon hit frame, so
+# it matches the new boss instead of the old claymation fist.
+var _fist_tex: Texture2D = load("res://assets/boss2/parts/glove.png")
 var _buttons := {}
 
 func _ready() -> void:
-	for i in 15:
-		_react.append(load("res://assets/boss/react%d.png" % i))
+	for face in REACT_FACES:
+		_react.append(load("res://assets/boss2/heads/%s.png" % face))
 	_react_tex = _react[0]
 
 	rig.resized.connect(_center_pivot)
 	_center_pivot()
+	# Let clicks pass through the boss Control to _unhandled_input, which
+	# resolves them into aimed punches (see _punch_click).
+	boss.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -135,10 +189,14 @@ func _ready() -> void:
 	var outline_mat := ShaderMaterial.new()
 	outline_mat.shader = load("res://shaders/outline.gdshader")
 	outline_mat.set_shader_parameter("width", 4.5)
-	body_spr.material = outline_mat
-	head.material = outline_mat
-	# Skin the boss body to the bone skeleton so hits can deform the art.
-	_build_body_mesh()
+	# Hang the sliced cutout pieces off the bones. Each piece carries the same
+	# outline shader so the whole figure reads as one drawn character.
+	_build_cutout_boss(outline_mat)
+	# Remember the rest pose so idle motion and hit reactions are offsets from
+	# it rather than absolute positions (the head used to snap to Vector2.ZERO
+	# after a hit, permanently shifting it off its anchored rest spot).
+	_hip_rest = bone_hip.position
+	_head_rest = bone_head.position
 	# Cinematic vignette over the world (below the boss + UI, which live in Safe).
 	var vig := ColorRect.new()
 	vig.color = Color(1, 1, 1, 1)
@@ -181,11 +239,27 @@ func _ready() -> void:
 	_buttons["A"] = _make_face_button("A", Color(0.20, 0.70, 0.25), Vector2(cx, cy + rr))
 	_buttons["X"] = _make_face_button("X", Color(0.20, 0.45, 0.85), Vector2(cx - rr, cy))
 	_buttons["B"] = _make_face_button("B", Color(0.82, 0.22, 0.20), Vector2(cx + rr, cy))
-	($Safe/Hint as Label).text = "A · B  =  body        X · Y  =  head"
+	($Safe/Hint as Label).text = "Click the boss — anywhere.        A · B  =  body        X · Y  =  head"
+
+	# Big combo counter, right side of the screen.
+	_combo_label = Label.new()
+	_combo_label.add_theme_font_size_override("font_size", 96)
+	_combo_label.add_theme_color_override("font_color", Color(1, 0.82, 0.17))
+	_combo_label.add_theme_color_override("font_outline_color", Color(0.1, 0.04, 0.08))
+	_combo_label.add_theme_constant_override("outline_size", 16)
+	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_combo_label.z_index = 60
+	_combo_label.position = Vector2(1560, 330)
+	_combo_label.rotation = -0.08
+	_combo_label.visible = false
+	safe.add_child(_combo_label)
 
 	ko_banner.modulate.a = 0.0
-	_set_rage(12.0)
-	_set_ko(0.0)
+	# The meter now fills toward FRENZY as the player lands hits, so it starts
+	# empty. (It used to be the boss's standing anger, which started at 12.)
+	_set_rage(0.0)
+	_set_hp(hp_max)
 	_say(OPENERS[randi() % OPENERS.size()])
 
 	var taunt_timer := Timer.new()
@@ -220,6 +294,29 @@ func _process(delta: float) -> void:
 	# The boss fight loop (guard -> wind-up tell -> vulnerable window).
 	if not _koing:
 		_update_fight(delta)
+
+	# Breathing / sway / weight-shift across the whole skeleton.
+	_pose_skeleton(delta)
+
+	# Combo decay + frenzy countdown.
+	if combo_time > 0.0:
+		combo_time -= delta
+		if combo_time <= 0.0:
+			combo = 0
+	if frenzy > 0.0:
+		frenzy -= delta
+	_combo_label.visible = combo >= 2
+	if _combo_label.visible:
+		_combo_label.text = "%d\nCOMBO" % combo
+		_combo_label.scale = _combo_label.scale.lerp(Vector2.ONE * (1.0 + minf(combo, 30.0) * 0.012), 12.0 * delta)
+		var ccol := Color(1, 0.82, 0.17)
+		if combo >= 20:
+			ccol = Color(1, 0.24, 0.94)
+		elif combo >= 10:
+			ccol = Color(1, 0.32, 0.21)
+		elif combo >= 5:
+			ccol = Color(1, 0.62, 0.17)
+		_combo_label.add_theme_color_override("font_color", ccol)
 
 	# Head expression: a recent punch wins, then talking, otherwise neutral.
 	var talking := _type_shown < total
@@ -284,6 +381,47 @@ func _unhandled_input(event: InputEvent) -> void:
 				JOY_BUTTON_B: _press("B")
 				JOY_BUTTON_X: _press("X")
 				JOY_BUTTON_Y: _press("Y")
+	elif event is InputEventMouseButton:
+		# Touches arrive here too via Godot's emulate_mouse_from_touch.
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_punch_click(get_global_mouse_position())
+
+# Click/tap anywhere: throw a fist at that exact point. Hits on the boss deal
+# damage; clicks in open air still swing (and whiff).
+func _punch_click(pos: Vector2) -> void:
+	if _koing:
+		return
+	var boss_rect := (boss as Control).get_global_rect().grow(20.0)
+	var head_rect := _part_global_rect(head).grow(10.0)
+	var boss_cx := boss_rect.position.x + boss_rect.size.x * 0.5
+	var side_left := pos.x < boss_cx
+	if not boss_rect.has_point(pos):
+		_throw_whiff(pos, side_left)
+		return
+	punches += 1
+	counter.text = "Punches: %d" % punches
+	_throw_fist(pos, side_left, head_rect.has_point(pos))
+
+func _throw_whiff(pos: Vector2, side_left: bool) -> void:
+	var f := TextureRect.new()
+	f.texture = _fist_tex
+	f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	f.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	f.size = Vector2(320, 320)
+	f.pivot_offset = f.size / 2.0
+	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	f.z_index = 80
+	add_child(f)
+	var mirror := 1.0 if side_left else -1.0
+	var start: Vector2 = Vector2(700.0, 1440.0) if side_left else Vector2(1220.0, 1440.0)
+	f.scale = Vector2(mirror * 1.4, 1.4)
+	f.position = start - f.size / 2.0
+	var tw := create_tween()
+	tw.tween_property(f, "position", pos - f.size / 2.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(f, "scale", Vector2(mirror * 0.95, 0.95), 0.09)
+	tw.tween_property(f, "modulate:a", 0.0, 0.14)
+	tw.tween_callback(f.queue_free)
+	_spawn_text(pos + Vector2(0, -60), "whiff", 34, Color(0.82, 0.84, 0.9))
 
 func _press(letter: String) -> void:
 	if _buttons.has(letter):
@@ -303,10 +441,11 @@ func _punch(side_left: bool, is_head: bool) -> void:
 		return
 	punches += 1
 	counter.text = "Punches: %d" % punches
-	var t: Control = head if is_head else body_spr
+	# Aim at the head or the torso cutout, biased to the struck side.
+	var r := _part_global_rect(head if is_head else torso_spr)
 	var fx := 0.30 if side_left else 0.70
 	var fy := 0.5 if is_head else 0.4
-	var impact: Vector2 = t.get_global_transform() * Vector2(t.size.x * fx, t.size.y * fy)
+	var impact: Vector2 = r.position + Vector2(r.size.x * fx, r.size.y * fy)
 	_throw_fist(impact, side_left, is_head)
 
 func _throw_fist(impact: Vector2, side_left: bool, is_head: bool) -> void:
@@ -341,24 +480,27 @@ func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 	if _koing:
 		return
 	var text_pos := _text_anchor(side_left)
-	if _state == BossState.VULNERABLE:
+	if _state == BossState.VULNERABLE or frenzy > 0.0:
 		_crit(impact, text_pos)
 	else:
 		_chip(impact, text_pos)
 	# Directional reaction: the head snaps aside, the body rocks.
 	if is_head:
-		head.position = Vector2(34.0 if side_left else -34.0, 6.0)
+		# Offset only — _pose_skeleton adds this to the rest pose. (This used
+		# to write head.position and spring back to Vector2.ZERO, which parked
+		# the head off its anchored rest spot after the very first head hit.)
+		_head_hit = Vector2(34.0 if side_left else -34.0, 6.0)
 		var kt := create_tween()
-		kt.tween_property(head, "position", Vector2.ZERO, 0.28).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+		kt.tween_property(self, "_head_hit", Vector2.ZERO, 0.28).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	else:
 		rig.position.x = 24.0 if side_left else -24.0
 		var lt := create_tween()
 		lt.tween_property(rig, "position:x", 0.0, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	# The bone skeleton deforms the body: arms shudder outward on impact
 	# (harder on a critical body blow).
-	var crit := _state == BossState.VULNERABLE
+	var crit := _state == BossState.VULNERABLE or frenzy > 0.0
 	_jostle_arms((1.0 if crit else 0.6) * (0.7 if is_head else 1.0))
-	if ko >= 100.0:
+	if hp <= 0.0:
 		_knockout()
 
 func _chip(impact: Vector2, text_pos: Vector2) -> void:
@@ -376,8 +518,7 @@ func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	_spawn_text(text_pos, POW_WORDS[randi() % POW_WORDS.size()], 84, Color(1, 0.86, 0.16))
 	_spawn_stars(impact, 5)
 	_hitstop(0.05)
-	_set_rage(rage - 2.0)
-	_set_ko(ko + float(randi_range(4, 7)))
+	_apply_damage(impact, float(randi_range(3, 6)), false)
 
 func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	# A punch landed in the vulnerable window: big damage + maxed-out juice.
@@ -397,10 +538,35 @@ func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	_spawn_stars(impact, 14)
 	_spawn_sweat(impact)
 	_hitstop(0.11)
-	_set_rage(rage - 8.0)
-	_set_ko(ko + float(randi_range(22, 32)))
+	_apply_damage(impact, float(randi_range(9, 14)), true)
 	# The opening is spent — the boss recovers to guard.
-	_enter_guard()
+	if _state == BossState.VULNERABLE:
+		_enter_guard()
+
+# Every landed hit funnels through here: combos multiply damage, rage builds
+# toward FRENZY, HP drains, and a damage number pops off the impact point.
+func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
+	combo += 1
+	combo_time = COMBO_WINDOW
+	max_combo = maxi(max_combo, combo)
+	if _combo_label != null:
+		_combo_label.pivot_offset = _combo_label.size / 2.0
+		_combo_label.scale = Vector2.ONE * 1.45
+	if crit:
+		crits += 1
+	var combo_mul := 1.0 + minf(float(combo) * 0.05, 0.8)
+	var dmg := maxf(1.0, roundf(base * combo_mul * (1.35 if frenzy > 0.0 else 1.0)))
+	_set_hp(hp - dmg)
+	_spawn_text(impact + Vector2(randf_range(-20.0, 20.0), -50.0), str(int(dmg)),
+		64 if crit else 44, Color(1, 0.32, 0.21) if crit else Color(1, 1, 1))
+	if frenzy <= 0.0:
+		_set_rage(rage + (13.0 if crit else 5.0))
+		if rage >= 100.0:
+			frenzy = 6.0
+			_set_rage(0.0)
+			_flash_screen(0.5)
+			_shake(18.0, 0.4)
+			_spawn_text(Vector2(960.0, 300.0), "FRENZY!!", 130, Color(1, 0.24, 0.94))
 
 # --- boss fight state machine ---
 
@@ -494,18 +660,36 @@ func _knockout() -> void:
 	_say("...okay. Let's not put THAT in the performance review.")
 	await get_tree().create_timer(1.1).timeout
 
-	# Fade the banner and reset the boss for the next round.
+	# Fade the banner and reset the boss for the next round: more HP, back for more.
 	var ft := create_tween()
 	ft.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
+	round_num += 1
+	hp_max = roundf(hp_max * ROUND_HP_SCALE)
+	_set_hp(hp_max)
 	_set_rage(0.0)
-	_set_ko(0.0)
+	combo = 0
+	frenzy = 0.0
 	_react_time = 0.0
+	# Clear pose offsets so he comes back standing straight.
+	_head_hit = Vector2.ZERO
+	_jostle_arm = 0.0
+	_jostle_fore = 0.0
 	rig.rotation = 0.0
 	rig.scale = Vector2.ONE
 	rig.position = Vector2(0.0, 1700.0)  # start below the desk
 	var back := create_tween()
 	back.tween_property(rig, "position", Vector2.ZERO, 0.55).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	await back.finished
+
+	# Round banner.
+	ko_banner.text = "ROUND %d" % round_num
+	ko_banner.modulate.a = 1.0
+	ko_banner.scale = Vector2(0.6, 0.6)
+	var rt := create_tween()
+	rt.tween_property(ko_banner, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	rt.tween_interval(0.9)
+	rt.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
+	_say(ROUND_LINES[randi() % ROUND_LINES.size()])
 
 	_koing = false
 	_enter_guard()
@@ -531,7 +715,8 @@ func _flash_screen(a: float) -> void:
 func _text_anchor(side_left: bool) -> Vector2:
 	# Words pop high and off to the side, in the open office space well clear
 	# of the boss's face (left-side hits pop left, right-side hits pop right).
-	var head_top: Vector2 = head.get_global_transform() * Vector2(head.size.x * 0.5, 0.0)
+	var hr := _part_global_rect(head)
+	var head_top: Vector2 = hr.position + Vector2(hr.size.x * 0.5, 0.0)
 	var dx := -380.0 if side_left else 380.0
 	return head_top + Vector2(dx, -110.0)
 
@@ -614,9 +799,10 @@ func _set_rage(v: float) -> void:
 	var hot := Color(0.42, 0.0, 0.05, 0.42)
 	overlay.color = calm.lerp(hot, rage / 100.0)
 
-func _set_ko(v: float) -> void:
-	ko = clampf(v, 0.0, 100.0)
-	ko_fill.anchor_right = ko / 100.0
+func _set_hp(v: float) -> void:
+	# The old K.O. meter is now the boss's health bar: full = healthy, empty = launch him.
+	hp = clampf(v, 0.0, hp_max)
+	ko_fill.anchor_right = hp / hp_max
 	ko_fill.offset_right = 0.0
 
 # --- layout helpers ---
@@ -625,123 +811,147 @@ func _center_pivot() -> void:
 	# Scale/squash from the boss's feet (bottom-center).
 	rig.pivot_offset = Vector2(rig.size.x / 2.0, rig.size.y)
 
-# --- bone-driven body mesh -------------------------------------------------
-# Replaces the flat Body sprite with a Polygon2D grid skinned to the Skeleton,
-# so moving a bone actually deforms the boss art. Torso / head-area / legs are
-# weighted to bones we leave at rest (they render exactly as the original),
-# while the arm bones can jostle on impact.
-var _body_mesh: Polygon2D
 
-# Rig-local bone segments used to weight the mesh (path is relative to Skeleton).
-const _BONE_SEGS := [
-	["Hip", Vector2(260, 780), Vector2(260, 830)],
-	["Hip/Spine", Vector2(260, 809), Vector2(260, 486)],
-	["Hip/Spine/Chest/Head", Vector2(260, 486), Vector2(260, 150)],
-	["Hip/ArmL", Vector2(122, 486), Vector2(83, 717)],
-	["Hip/ArmL/ForearmL", Vector2(83, 717), Vector2(87, 924)],
-	["Hip/ArmL/ForearmL/FistL", Vector2(87, 924), Vector2(87, 990)],
-	["Hip/ArmR", Vector2(398, 486), Vector2(438, 717)],
-	["Hip/ArmR/ForearmR", Vector2(438, 717), Vector2(433, 924)],
-	["Hip/ArmR/ForearmR/FistR", Vector2(433, 924), Vector2(433, 990)],
-	["Hip/LegL", Vector2(230, 830), Vector2(202, 1201)],
-	["Hip/LegR", Vector2(290, 830), Vector2(313, 1201)],
+# --- cutout boss rig -------------------------------------------------------
+# The cartoon boss is sliced into 15 pieces (assets/boss2/parts). Each piece
+# hangs off its bone as a Sprite2D, so rotating a bone swings that limb and
+# everything below it. Pieces overlap at the joints so rotation never opens a
+# gap. Slice space is base.png (354x1152-crop); it maps into Rig-local space
+# with PART_SCALE about the origin below.
+const PART_SCALE := 1.23431
+const PART_OX := 41.55
+const PART_OY := 60.0
+
+# name, bone path under Skeleton, slice-space bbox origin, slice-space pivot, z
+const _PARTS := [
+	["foot_l",  "Hip/ThighL/ShinL/FootL", Vector2(0, 892),   Vector2(106, 905), 0],
+	["foot_r",  "Hip/ThighR/ShinR/FootR", Vector2(199, 892), Vector2(248, 905), 0],
+	["shin_l",  "Hip/ThighL/ShinL",       Vector2(10, 782),  Vector2(112, 790), 1],
+	["shin_r",  "Hip/ThighR/ShinR",       Vector2(199, 782), Vector2(242, 790), 1],
+	["thigh_l", "Hip/ThighL",             Vector2(77, 598),  Vector2(140, 620), 2],
+	["thigh_r", "Hip/ThighR",             Vector2(177, 598), Vector2(212, 620), 2],
+	["hips",    "Hip",                    Vector2(86, 524),  Vector2(176, 560), 3],
+	# Pivot must be the bone's own position in slice space - Spine sits at
+	# slice y470, not at the waist, or the torso detaches and the belt doubles.
+	["torso",   "Hip/Spine",              Vector2(51, 296),  Vector2(176, 470), 4],
+	["uarm_l",  "Hip/ArmL",               Vector2(27, 418),  Vector2(108, 405), 5],
+	["uarm_r",  "Hip/ArmR",               Vector2(248, 418), Vector2(246, 405), 5],
+	["farm_l",  "Hip/ArmL/ForearmL",      Vector2(9, 516),   Vector2(46, 522),  6],
+	["farm_r",  "Hip/ArmR/ForearmR",      Vector2(296, 516), Vector2(306, 522), 6],
+	["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(5, 626),  Vector2(28, 634),  7],
+	["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(285, 626), Vector2(324, 634), 7],
 ]
+# The head is built separately: its texture is swapped for expressions, so it
+# uses the normalised head canvas (neck anchored at 230,470) rather than a
+# slice bbox.
+const HEAD_ANCHOR := Vector2(230, 470)
+const HEAD_Z := 8
 
-func _seg_dist(p: Vector2, a: Vector2, b: Vector2) -> float:
-	var ab := b - a
-	var l2 := ab.length_squared()
-	var t := 0.0
-	if l2 > 0.0:
-		t = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
-	return p.distance_to(a + ab * t)
+func _make_part(tex: Texture2D, origin: Vector2, pivot: Vector2, z: int,
+		bone: Node, mat: Material) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.texture = tex
+	s.centered = false
+	s.scale = Vector2(PART_SCALE, PART_SCALE)
+	# Place the piece so its slice-space pivot lands on the bone's origin.
+	s.position = (origin - pivot) * PART_SCALE
+	s.z_index = z
+	s.material = mat
+	bone.add_child(s)
+	return s
 
-func _build_body_mesh() -> void:
-	if skel == null or body_spr.texture == null:
+func _build_cutout_boss(mat: Material) -> void:
+	if skel == null:
 		return
-	var cols := 12
-	var rows := 26
-	# Body sprite rect in Rig-local space (matches the Body TextureRect area).
-	var x0 := 18.0
-	var x1 := 502.0
-	var y0 := 60.0
-	var y1 := 1240.0
-	var tex: Texture2D = body_spr.texture
-	var tw := float(tex.get_width())
-	var th := float(tex.get_height())
-	var verts := PackedVector2Array()
-	var uvs := PackedVector2Array()
-	for r in rows + 1:
-		for c in cols + 1:
-			var fx := float(c) / float(cols)
-			var fy := float(r) / float(rows)
-			verts.append(Vector2(lerpf(x0, x1, fx), lerpf(y0, y1, fy)))
-			uvs.append(Vector2(fx * tw, fy * th))
-	# Triangulate the grid.
-	var tris: Array = []
-	for r in rows:
-		for c in cols:
-			var i0 := r * (cols + 1) + c
-			var i2 := i0 + (cols + 1)
-			tris.append(PackedInt32Array([i0, i2, i0 + 1]))
-			tris.append(PackedInt32Array([i0 + 1, i2, i2 + 1]))
-	# Per-vertex bone weights: inverse distance to each bone segment, normalized.
-	var nbones := _BONE_SEGS.size()
-	var weights: Array = []
-	for b in nbones:
-		var wa := PackedFloat32Array()
-		wa.resize(verts.size())
-		weights.append(wa)
-	for vi in verts.size():
-		var p: Vector2 = verts[vi]
-		var raw := PackedFloat32Array()
-		raw.resize(nbones)
-		var total := 0.0
-		for b in nbones:
-			var seg: Array = _BONE_SEGS[b]
-			var d := _seg_dist(p, seg[1], seg[2])
-			var w := 1.0 / pow(d + 8.0, 3.2)
-			raw[b] = w
-			total += w
-		if total <= 0.0:
-			total = 1.0
-		for b in nbones:
-			weights[b][vi] = raw[b] / total
-	# Build the skinned Polygon2D and slot it where the Body sprite was.
-	var poly := Polygon2D.new()
-	poly.name = "BodyMesh"
-	poly.texture = tex
-	poly.polygon = verts
-	poly.uv = uvs
-	poly.polygons = tris
-	poly.internal_vertex_count = 0
-	poly.material = body_spr.material  # keep the outline shader
-	rig.add_child(poly)
-	rig.move_child(poly, body_spr.get_index())
-	poly.skeleton = poly.get_path_to(skel)
-	for b in nbones:
-		poly.add_bone(NodePath(_BONE_SEGS[b][0]), weights[b])
+	for entry in _PARTS:
+		var bone := skel.get_node_or_null(NodePath(entry[1]))
+		if bone == null:
+			push_warning("cutout: missing bone %s" % entry[1])
+			continue
+		var tex: Texture2D = load("res://assets/boss2/parts/%s.png" % entry[0])
+		var spr := _make_part(tex, entry[2], entry[3], entry[4], bone, mat)
+		if entry[0] == "torso":
+			torso_spr = spr
+	# Head last, on the Head bone, pivoting at the neck.
+	var hb := skel.get_node_or_null(NodePath("Hip/Spine/Chest/Head"))
+	if hb != null:
+		head = _make_part(_tex_neutral, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z, hb, mat)
+	# The old flat claymation art is superseded by the cutout pieces.
 	body_spr.visible = false
-	_body_mesh = poly
+	old_head.visible = false
 
-# A hit makes the boss's arms shudder outward via the arm bones, then spring
-# back — the skeleton visibly deforming the body on impact.
+# Global-space rect of a cutout piece, for aiming clicks and impact points.
+func _part_global_rect(s: Sprite2D) -> Rect2:
+	if s == null or s.texture == null:
+		return Rect2()
+	var sz: Vector2 = s.texture.get_size() * PART_SCALE
+	return Rect2(s.get_global_transform() * Vector2.ZERO, sz * boss.scale)
+
+
+# Idle life: the boss breathes, shifts his weight and lets his arms hang and
+# swing. Runs every frame and owns every bone rotation, so impact reactions
+# feed in through _jostle_arm / _jostle_fore rather than tweening bones directly.
+func _pose_skeleton(delta: float) -> void:
+	if skel == null:
+		return
+	_idle_t += delta
+	# Two waves: a breath, and a slower weight shift from foot to foot.
+	var breath := sin(_idle_t * 1.9)
+	var sway := sin(_idle_t * 0.72)
+	var trail := sin(_idle_t * 0.72 + 0.9)   # limbs lag the torso slightly
+	# He gets visibly more agitated as he winds up and while he's open.
+	var amp := 1.0
+	if _state == BossState.WINDUP:
+		amp = 1.7
+	elif _state == BossState.VULNERABLE:
+		amp = 2.2
+
+	# Hips carry the weight shift; the torso counter-rotates so it reads as
+	# shifting weight rather than the whole figure sliding sideways.
+	bone_hip.position = _hip_rest + Vector2(sway * 5.0 * amp, -breath * 2.0)
+	bone_hip.rotation = sway * 0.018 * amp
+	bone_spine.rotation = -sway * 0.026 * amp + breath * 0.008
+	bone_chest.rotation = -sway * 0.014 * amp + breath * 0.012
+	bone_head.rotation = sway * 0.030 * amp - breath * 0.010
+
+	# Arms hang and swing, opposite phase per side, with the impact shudder
+	# layered on top. Hands trail the forearms by a beat.
+	bone_arm_l.rotation = sway * 0.055 * amp + _jostle_arm
+	bone_arm_r.rotation = -sway * 0.055 * amp - _jostle_arm
+	bone_forearm_l.rotation = trail * 0.045 * amp + _jostle_fore
+	bone_forearm_r.rotation = -trail * 0.045 * amp - _jostle_fore
+	bone_fist_l.rotation = sin(_idle_t * 0.72 + 1.6) * 0.05 * amp
+	bone_fist_r.rotation = -sin(_idle_t * 0.72 + 1.6) * 0.05 * amp
+
+	# The weight shift travels down the legs; knees and ankles absorb it.
+	bone_thigh_l.rotation = -sway * 0.020 * amp
+	bone_thigh_r.rotation = -sway * 0.020 * amp
+	bone_shin_l.rotation = sway * 0.014 * amp
+	bone_shin_r.rotation = sway * 0.014 * amp
+	bone_foot_l.rotation = -sway * 0.010 * amp
+	bone_foot_r.rotation = -sway * 0.010 * amp
+
+	# The head cutout hangs off the Head bone, so moving the bone moves it. The
+	# knock from a head hit is layered on as a bone offset.
+	bone_head.position = _head_rest + _head_hit + Vector2(sway * 3.0 * amp, -breath * 2.0)
+
+# A hit makes the boss's arms shudder outward, then spring back. These feed
+# _pose_skeleton as offsets rather than writing bone rotations directly.
 func _jostle_arms(intensity: float) -> void:
 	if skel == null:
 		return
 	var la := deg_to_rad(22.0 * intensity)
 	var lf := deg_to_rad(30.0 * intensity)
-	# Left arm swings out to the boss's left (+), right arm to the right (-).
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(bone_arm_l, "rotation", la, 0.05).set_ease(Tween.EASE_OUT)
-	tw.tween_property(bone_arm_r, "rotation", -la, 0.05).set_ease(Tween.EASE_OUT)
-	tw.tween_property(bone_forearm_l, "rotation", lf, 0.05).set_ease(Tween.EASE_OUT)
-	tw.tween_property(bone_forearm_r, "rotation", -lf, 0.05).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "_jostle_arm", la, 0.05).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "_jostle_fore", lf, 0.05).set_ease(Tween.EASE_OUT)
 	var back := create_tween()
 	back.set_parallel(true)
-	for bone in [bone_arm_l, bone_arm_r, bone_forearm_l, bone_forearm_r]:
-		back.tween_property(bone, "rotation", 0.0, 0.42) \
-			.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	back.tween_property(self, "_jostle_arm", 0.0, 0.42) \
+		.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	back.tween_property(self, "_jostle_fore", 0.0, 0.42) \
+		.set_delay(0.05).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 func _apply_safe_area() -> void:
 	# Safe-area insets only make sense on handhelds. On desktop the "display

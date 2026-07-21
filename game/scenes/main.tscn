@@ -165,108 +165,135 @@ sprite_frames = ExtResource("5_frames")
 animation = &"idle"
 
 ; --- Boss bone skeleton ---------------------------------------------------
-; A Skeleton2D rig laid over the boss in Rig-local space (the figure spans
-; ~x[18,502], y[60,1240]; feet ~1235, head-top ~140). Bones are in a rest
-; (T-ish) pose and drive nothing yet — to animate the art it must be bound to
-; a weighted Polygon2D or split into per-bone cutout sprites. main.gd exposes
-; @onready refs to the head / arm / fist bones so animations can rotate them.
+; Retargeted to the cartoon boss (assets/boss2). main.gd's _build_cutout_boss()
+; hangs one sliced Sprite2D under each bone, so rotating a bone moves that limb
+; piece. Joint positions map to the sliced art via
+;   rig = 41.55 + base_x * 1.23431   and   60 + base_y * 1.23431
 [node name="Skeleton" type="Skeleton2D" parent="Safe/Boss/Rig"]
 
 [node name="Hip" type="Bone2D" parent="Safe/Boss/Rig/Skeleton"]
-position = Vector2(260, 809)
-rest = Transform2D(1, 0, 0, 1, 260, 809)
+position = Vector2(259, 751)
+rest = Transform2D(1, 0, 0, 1, 259, 751)
 auto_calculate_length_and_angle = false
 length = 60.0
 bone_angle = 1.5708
 
 [node name="Spine" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
-position = Vector2(0, -159)
-rest = Transform2D(1, 0, 0, 1, 0, -159)
+position = Vector2(0, -111)
+rest = Transform2D(1, 0, 0, 1, 0, -111)
 auto_calculate_length_and_angle = false
-length = 160.0
+length = 111.0
 bone_angle = -1.5708
 
 [node name="Chest" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/Spine"]
-position = Vector2(0, -164)
-rest = Transform2D(1, 0, 0, 1, 0, -164)
+position = Vector2(0, -111)
+rest = Transform2D(1, 0, 0, 1, 0, -111)
 auto_calculate_length_and_angle = false
-length = 60.0
+length = 84.0
 bone_angle = -1.5708
 
 [node name="Head" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/Spine/Chest"]
-position = Vector2(0, -46)
-rest = Transform2D(1, 0, 0, 1, 0, -46)
+position = Vector2(0, -84)
+rest = Transform2D(1, 0, 0, 1, 0, -84)
 auto_calculate_length_and_angle = false
 length = 340.0
 bone_angle = -1.5708
 
 [node name="ArmL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
-position = Vector2(-138, -323)
-rest = Transform2D(1, 0, 0, 1, -138, -323)
+position = Vector2(-84, -191)
+rest = Transform2D(1, 0, 0, 1, -84, -191)
 auto_calculate_length_and_angle = false
-length = 234.0
-bone_angle = 1.7382
+length = 163.3
+bone_angle = 2.0618
 
 [node name="ForearmL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmL"]
-position = Vector2(-39, 231)
-rest = Transform2D(1, 0, 0, 1, -39, 231)
+position = Vector2(-77, 144)
+rest = Transform2D(1, 0, 0, 1, -77, 144)
 auto_calculate_length_and_angle = false
-length = 207.0
-bone_angle = 1.5514
+length = 140.7
+bone_angle = 1.7278
 
 [node name="FistL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmL/ForearmL"]
-position = Vector2(4, 207)
-rest = Transform2D(1, 0, 0, 1, 4, 207)
+position = Vector2(-22, 139)
+rest = Transform2D(1, 0, 0, 1, -22, 139)
 auto_calculate_length_and_angle = false
-length = 60.0
-bone_angle = 1.5708
+length = 107.5
+bone_angle = 1.6640
 
 [node name="ArmR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
-position = Vector2(138, -323)
-rest = Transform2D(1, 0, 0, 1, 138, -323)
+position = Vector2(86, -191)
+rest = Transform2D(1, 0, 0, 1, 86, -191)
 auto_calculate_length_and_angle = false
-length = 234.0
-bone_angle = 1.3998
+length = 161.9
+bone_angle = 1.0961
 
 [node name="ForearmR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmR"]
-position = Vector2(40, 231)
-rest = Transform2D(1, 0, 0, 1, 40, 231)
+position = Vector2(74, 144)
+rest = Transform2D(1, 0, 0, 1, 74, 144)
 auto_calculate_length_and_angle = false
-length = 207.0
-bone_angle = 1.5949
+length = 140.7
+bone_angle = 1.4138
 
 [node name="FistR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ArmR/ForearmR"]
-position = Vector2(-5, 207)
-rest = Transform2D(1, 0, 0, 1, -5, 207)
+position = Vector2(22, 139)
+rest = Transform2D(1, 0, 0, 1, 22, 139)
 auto_calculate_length_and_angle = false
-length = 60.0
-bone_angle = 1.5708
+length = 107.5
+bone_angle = 1.4776
 
-[node name="LegL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
-position = Vector2(-30, 21)
-rest = Transform2D(1, 0, 0, 1, -30, 21)
+[node name="ThighL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(-45, 74)
+rest = Transform2D(1, 0, 0, 1, -45, 74)
 auto_calculate_length_and_angle = false
-length = 372.0
-bone_angle = 1.6461
+length = 212.7
+bone_angle = 1.7313
 
-[node name="LegR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
-position = Vector2(30, 21)
-rest = Transform2D(1, 0, 0, 1, 30, 21)
+[node name="ShinL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ThighL"]
+position = Vector2(-34, 210)
+rest = Transform2D(1, 0, 0, 1, -34, 210)
 auto_calculate_length_and_angle = false
-length = 372.0
-bone_angle = 1.5088
+length = 142.2
+bone_angle = 1.6271
+
+[node name="FootL" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ThighL/ShinL"]
+position = Vector2(-8, 142)
+rest = Transform2D(1, 0, 0, 1, -8, 142)
+auto_calculate_length_and_angle = false
+length = 140.5
+bone_angle = 2.7002
+
+[node name="ThighR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip"]
+position = Vector2(44, 74)
+rest = Transform2D(1, 0, 0, 1, 44, 74)
+auto_calculate_length_and_angle = false
+length = 213.2
+bone_angle = 1.3964
+
+[node name="ShinR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ThighR"]
+position = Vector2(37, 210)
+rest = Transform2D(1, 0, 0, 1, 37, 210)
+auto_calculate_length_and_angle = false
+length = 142.2
+bone_angle = 1.5145
+
+[node name="FootR" type="Bone2D" parent="Safe/Boss/Rig/Skeleton/Hip/ThighR/ShinR"]
+position = Vector2(8, 142)
+rest = Transform2D(1, 0, 0, 1, 8, 142)
+auto_calculate_length_and_angle = false
+length = 140.5
+bone_angle = 0.4414
 
 [node name="RageLabel" type="Label" parent="Safe"]
 layout_mode = 1
 offset_left = 16.0
 offset_top = 22.0
-offset_right = 110.0
+offset_right = 165.0
 offset_bottom = 56.0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
 theme_override_constants/outline_size = 10
 theme_override_font_sizes/font_size = 28
-text = "RAGE"
+text = "FRENZY"
 vertical_alignment = 1
 
 [node name="RageTrack" type="Panel" parent="Safe"]
@@ -297,7 +324,7 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.09, 1)
 theme_override_constants/outline_size = 10
 theme_override_font_sizes/font_size = 28
-text = "K.O."
+text = "BOSS"
 vertical_alignment = 1
 
 [node name="KoTrack" type="Panel" parent="Safe"]
