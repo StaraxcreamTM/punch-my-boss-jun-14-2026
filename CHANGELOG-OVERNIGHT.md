@@ -152,6 +152,52 @@ teardown — 2 leaked `ObjectDB` instances at exit. I confirmed causation by
 disabling the music entirely (warning vanished) rather than guessing, then
 released the stream on close. Clean exit now.
 
+## `b49e6a5` — v0.22: customisation = the generic-character architecture
+
+The boss is now **one rigged body + a swappable look**. Adding a character
+means a new look (or a new art set in the same rig), not a new rig — which
+answers your "one generic modifiable character vs. many bespoke ones" question
+**in favour of generic**.
+
+- **6 skin tones**, recoloured in-shader with shading preserved
+- **4 hair** + **3 moustache** options, drawn on the same 460×500 canvas as the
+  heads so they inherit the head's anchor exactly
+- Cycle with **K** / **H** / **J**; saved to disk
+
+Technical notes worth keeping: skin is matched by **hue/saturation/value**, not
+RGB distance (the art has several skin shades; a distance test either misses
+shadows or bleeds into the khaki). Only skin-bearing pieces get the recolour
+enabled, each with its **own duplicated material** — uniforms live on the
+material, so a shared one would have recoloured everything at once. And the
+uniforms are deliberately **not** `source_color`, since that hint linearises
+values the HSV maths treats as raw sRGB.
+
+**Two false alarms worth recording**, because both were *my measurement* being
+wrong rather than the code:
+1. I measured "average skin-hued pixels" — but the brown office background
+   passes the same hue filter and swamped the average.
+2. I then sampled the **pre-fight screen**, which has a 45% dim overlay, so
+   everything looked unchanged.
+A side-by-side on an undimmed fight frame showed it working correctly all
+along. Lesson: verify on a frame that isn't dimmed, and diff rather than average.
+
+## `MAKE-IT-SELLABLE.md` — product plan
+
+Written and committed. Covers the honest gap analysis, content volume targets,
+progression, game feel (**haptics is the biggest single feel gap on mobile**),
+audio, the **Android reality check** (nothing has run on a phone yet), store
+listing, pricing, and a suggested order.
+
+**Two things in it need your decision:**
+- **Portrait vs landscape.** Landscape suits Punch-Out; portrait suits
+  one-handed commute play, which is exactly when someone wants this. My lean is
+  portrait — the use case beats the genre convention.
+- **The AI question** (§9), with three concrete options since your message was
+  garbled in transcription. Short version: use an LLM *offline* to write
+  hundreds of boss lines (zero runtime cost), improve boss behaviour with plain
+  weighted patterns, and treat on-device LLM as post-launch — a 1–2GB model is
+  an install-conversion problem at a $2 price point.
+
 ---
 
 ## Decisions made without you (flagged per the brief)
