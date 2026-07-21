@@ -396,6 +396,7 @@ func _ready() -> void:
 	for b in _buttons.values():
 		_hud_nodes.append(b)
 	counter.text = "SCORE  0"
+	apply_look()
 	_build_screens()
 	_show_title()
 
@@ -524,6 +525,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				# Dodging: arrows / WSD. Left and right slip the punch, down
 				# ducks (which the uppercut punishes).
 				KEY_M: toggle_music()
+				# Customisation: skin / hair / moustache.
+				KEY_K: cycle_look("skin")
+				KEY_H: cycle_look("hair")
+				KEY_J: cycle_look("moustache")
 				KEY_1: _pick_difficulty(Difficulty.BAG)
 				KEY_2: _pick_difficulty(Difficulty.DEFENSIVE)
 				KEY_3: _pick_difficulty(Difficulty.BRAWLER)
@@ -1195,19 +1200,29 @@ func _make_part(tex: Texture2D, origin: Vector2, pivot: Vector2, z: int,
 func _build_cutout_boss(mat: Material) -> void:
 	if skel == null:
 		return
+	var skin_parts := ["uarm_l", "uarm_r", "farm_l", "farm_r", "hand_l", "hand_r"]
 	for entry in _PARTS:
 		var bone := skel.get_node_or_null(NodePath(entry[1]))
 		if bone == null:
 			push_warning("cutout: missing bone %s" % entry[1])
 			continue
 		var tex: Texture2D = load("res://assets/boss2/parts/%s.png" % entry[0])
-		var spr := _make_part(tex, entry[2], entry[3], entry[4], bone, mat)
+		# Skin pieces need their OWN material instance: shader uniforms live on
+		# the material, so a shared one would recolour every piece at once.
+		var pm: Material = mat
+		if entry[0] in skin_parts:
+			pm = mat.duplicate()
+		var spr := _make_part(tex, entry[2], entry[3], entry[4], bone, pm)
+		if entry[0] in skin_parts:
+			_skin_sprites.append(spr)
 		if entry[0] == "torso":
 			torso_spr = spr
 	# Head last, on the Head bone, pivoting at the neck.
 	var hb := skel.get_node_or_null(NodePath("Hip/Spine/Chest/Head"))
 	if hb != null:
-		head = _make_part(_tex_neutral, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z, hb, mat)
+		head = _make_part(_tex_neutral, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z, hb, mat.duplicate())
+		_skin_sprites.append(head)
+	_build_look_layers(mat)
 	# The old flat claymation art is superseded by the cutout pieces.
 	body_spr.visible = false
 	old_head.visible = false
@@ -1385,6 +1400,9 @@ func _demo_tick() -> void:
 			_dodge(1)
 		7:
 			_dodge(0)
+			cycle_look("skin")
+			cycle_look("hair")
+			cycle_look("moustache")
 		_:
 			# Exercise the music toggle (and therefore the save path) once per
 			# demo run, so persistence is verified rather than assumed.
@@ -1475,12 +1493,18 @@ func _load_prefs() -> void:
 	best_score = int(cfg.get_value("score", "best", 0))
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
+	look_skin = int(cfg.get_value("look", "skin", 0))
+	look_hair = int(cfg.get_value("look", "hair", 0))
+	look_moustache = int(cfg.get_value("look", "moustache", 0))
 
 func _save_prefs() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("score", "best", best_score)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
+	cfg.set_value("look", "skin", look_skin)
+	cfg.set_value("look", "hair", look_hair)
+	cfg.set_value("look", "moustache", look_moustache)
 	cfg.save(SAVE_PATH)
 
 # --- screens / game phases --------------------------------------------------
@@ -1640,3 +1664,80 @@ func _advance_screen() -> void:
 			_start_prefight()
 		_:
 			pass
+
+# --- character look / customisation -----------------------------------------
+# The generic-character architecture. The boss is ONE rigged body plus a look
+# config: a skin tone applied through the outline shader's recolour path, and
+# accessory sprites parented to the head bone. Adding a new character means a
+# new LOOK entry (or a new art set slotted into the same rig), not a new rig.
+#
+# Accessory textures are authored on the same 460x500 canvas as the head, so
+# they share the head's anchor offset exactly - no per-accessory alignment.
+const SKIN_TONES := [
+	Color(0.804, 0.620, 0.455),   # the art's own tone
+	Color(0.949, 0.812, 0.694),
+	Color(0.878, 0.694, 0.525),
+	Color(0.639, 0.451, 0.318),
+	Color(0.435, 0.290, 0.204),
+	Color(0.278, 0.184, 0.133),
+]
+const HAIR_OPTS := ["", "hair_swoop", "hair_puff", "hair_toupee"]
+const MOUSTACHE_OPTS := ["", "mustache", "mustache_handlebar"]
+
+var look_skin: int = 0
+var look_hair: int = 0
+var look_moustache: int = 0
+
+var _skin_sprites: Array = []     # pieces that carry visible skin
+var _hair_spr: Sprite2D
+var _moustache_spr: Sprite2D
+
+func _build_look_layers(mat: Material) -> void:
+	var hb = skel.get_node_or_null(NodePath("Hip/Spine/Chest/Head"))
+	if hb == null:
+		return
+	# Accessories sit above the head sprite (HEAD_Z) so they read as worn.
+	_hair_spr = _make_part(null, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z + 1, hb, mat)
+	_moustache_spr = _make_part(null, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z + 2, hb, mat)
+	_hair_spr.visible = false
+	_moustache_spr.visible = false
+
+func apply_look() -> void:
+	# Skin: only the pieces that actually show skin get the recolour path
+	# switched on, so the shirt and trousers can never be caught by it.
+	var tone: Color = SKIN_TONES[posmod(look_skin, SKIN_TONES.size())]
+	for s in _skin_sprites:
+		if s == null or not is_instance_valid(s):
+			continue
+		var m := s.material as ShaderMaterial
+		if m == null:
+			continue
+		m.set_shader_parameter("skin_enabled", look_skin != 0)
+		m.set_shader_parameter("skin_base", Vector3(0.804, 0.620, 0.455))
+		m.set_shader_parameter("skin_target", Vector3(tone.r, tone.g, tone.b))
+	_set_accessory(_hair_spr, HAIR_OPTS[posmod(look_hair, HAIR_OPTS.size())])
+	_set_accessory(_moustache_spr, MOUSTACHE_OPTS[posmod(look_moustache, MOUSTACHE_OPTS.size())])
+	_save_prefs()
+
+func _set_accessory(spr: Sprite2D, name: String) -> void:
+	if spr == null:
+		return
+	if name == "":
+		spr.visible = false
+		return
+	var path := "res://assets/boss2/look/%s.png" % name
+	if not ResourceLoader.exists(path):
+		spr.visible = false
+		return
+	spr.texture = load(path)
+	spr.visible = true
+
+func cycle_look(what: String, dir: int = 1) -> void:
+	match what:
+		"skin":
+			look_skin = posmod(look_skin + dir, SKIN_TONES.size())
+		"hair":
+			look_hair = posmod(look_hair + dir, HAIR_OPTS.size())
+		"moustache":
+			look_moustache = posmod(look_moustache + dir, MOUSTACHE_OPTS.size())
+	apply_look()
