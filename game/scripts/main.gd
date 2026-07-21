@@ -502,18 +502,18 @@ func _throw_whiff(pos: Vector2, side_left: bool) -> void:
 	f.texture = _fist_tex
 	f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	f.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	f.size = Vector2(320, 320)
+	f.size = Vector2(250, 250)
 	f.pivot_offset = f.size / 2.0
 	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	f.z_index = 80
 	add_child(f)
 	var mirror := 1.0 if side_left else -1.0
 	var start: Vector2 = Vector2(700.0, 1440.0) if side_left else Vector2(1220.0, 1440.0)
-	f.scale = Vector2(mirror * 1.4, 1.4)
+	f.scale = Vector2(mirror * 1.15, 1.15)
 	f.position = start - f.size / 2.0
 	var tw := create_tween()
 	tw.tween_property(f, "position", pos - f.size / 2.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(f, "scale", Vector2(mirror * 0.95, 0.95), 0.09)
+	tw.parallel().tween_property(f, "scale", Vector2(mirror * 0.82, 0.82), 0.09)
 	tw.tween_property(f, "modulate:a", 0.0, 0.14)
 	tw.tween_callback(f.queue_free)
 	_spawn_text(pos + Vector2(0, -60), "whiff", 34, Color(0.82, 0.84, 0.9))
@@ -548,7 +548,7 @@ func _throw_fist(impact: Vector2, side_left: bool, is_head: bool) -> void:
 	f.texture = _fist_tex
 	f.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	f.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	f.size = Vector2(320, 320)
+	f.size = Vector2(250, 250)
 	f.pivot_offset = f.size / 2.0
 	var mirror := 1.0 if side_left else -1.0  # mirror the fist for the other hand
 	f.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -558,8 +558,10 @@ func _throw_fist(impact: Vector2, side_left: bool, is_head: bool) -> void:
 	# camera, so it starts large) and fully extends to reach the boss, then
 	# retracts. No detached "flying fist" arcing in from off-screen.
 	var start: Vector2 = Vector2(700.0, 1440.0) if side_left else Vector2(1220.0, 1440.0)
-	var start_scale := 1.4   # close to the viewer at the start of the thrust
-	var reach_scale := 0.95  # arm fully extended toward the boss
+	# Kept modest on purpose: at 320px/1.4 the glove filled enough of the frame
+	# to hide the boss's reaction, which is the thing worth watching.
+	var start_scale := 1.15  # close to the viewer at the start of the thrust
+	var reach_scale := 0.82  # arm fully extended toward the boss
 	f.scale = Vector2(mirror * start_scale, start_scale)
 	f.position = start - f.size / 2.0
 	var tw := create_tween()
@@ -1234,6 +1236,8 @@ func _wav(data: PackedByteArray, rate: int) -> AudioStreamWAV:
 const SHOT_COUNT := 48
 const SHOT_INTERVAL := 0.30
 
+var _shot_interval: float = SHOT_INTERVAL
+var _demo_period: float = 0.60
 var _shot_mode: bool = false
 var _shot_i: int = 0
 var _demo_step: int = 0
@@ -1242,6 +1246,12 @@ func _setup_shots() -> void:
 	if not ("--shots" in OS.get_cmdline_user_args()):
 		return
 	_shot_mode = true
+	# --shots-fast samples densely enough to catch short-lived effects (the
+	# thrown glove is only on screen ~0.22s, so the default 0.30s cadence can
+	# skip every single one).
+	if "--shots-fast" in OS.get_cmdline_user_args():
+		_shot_interval = 0.09
+		_demo_period = 0.45
 	var dir := "user://shots"
 	DirAccess.make_dir_recursive_absolute(dir)
 	# Clear any previous strip so old frames can't be mistaken for new ones.
@@ -1256,12 +1266,12 @@ func _setup_shots() -> void:
 		d.list_dir_end()
 	print("[shots] writing to ", ProjectSettings.globalize_path(dir))
 	var t := Timer.new()
-	t.wait_time = SHOT_INTERVAL
+	t.wait_time = _shot_interval
 	t.autostart = true
 	t.timeout.connect(_take_shot)
 	add_child(t)
 	var dm := Timer.new()
-	dm.wait_time = 0.60
+	dm.wait_time = _demo_period
 	dm.autostart = true
 	dm.timeout.connect(_demo_tick)
 	add_child(dm)

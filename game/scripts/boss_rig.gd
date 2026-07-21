@@ -348,8 +348,11 @@ func stagger(side_left: bool, power: float = 1.0) -> void:
 		"head": 0.55 * s * power,
 		"chest": 0.22 * s * power,
 		"spine": 0.14 * s * power,
-		"uarmL": 0.5 * power, "uarmR": -0.5 * power,
-		"farmL": 0.7 * power, "farmR": -0.7 * power,
+		# Forearms counter-rotate against the upper arms. Same-sign rotation
+		# read as the elbow bending backwards, which looks broken rather than
+		# cartoonish.
+		"uarmL": 0.42 * power, "uarmR": -0.42 * power,
+		"farmL": -0.30 * power, "farmR": 0.30 * power,
 	}, 0.05, 0.04, 0.42)
 	var tb := create_tween()
 	tb.tween_property(self, "body_pos", Vector2(-52.0 * s * power, 0.0), 0.05)
