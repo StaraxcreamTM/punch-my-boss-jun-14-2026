@@ -430,6 +430,9 @@ func _ready() -> void:
 	for b in _buttons.values():
 		_hud_nodes.append(b)
 	counter.text = "SCORE  0"
+	if "--portrait" in OS.get_cmdline_user_args():
+		portrait = true
+	_apply_portrait()
 	apply_look()
 	_build_screens()
 	_show_title()
@@ -1646,6 +1649,7 @@ func _load_prefs() -> void:
 	look_skin = int(cfg.get_value("look", "skin", 0))
 	look_hair = int(cfg.get_value("look", "hair", 0))
 	look_moustache = int(cfg.get_value("look", "moustache", 0))
+	portrait = bool(cfg.get_value("settings", "portrait", false))
 
 func _save_prefs() -> void:
 	var cfg := ConfigFile.new()
@@ -1655,6 +1659,7 @@ func _save_prefs() -> void:
 	cfg.set_value("look", "skin", look_skin)
 	cfg.set_value("look", "hair", look_hair)
 	cfg.set_value("look", "moustache", look_moustache)
+	cfg.set_value("settings", "portrait", portrait)
 	cfg.save(SAVE_PATH)
 
 # --- screens / game phases --------------------------------------------------
@@ -2228,3 +2233,64 @@ func _moon_land() -> void:
 	rig_anim.idle_enabled = true
 	_moon_stage = 1
 	_moon_sweep = 0.0
+
+# --- portrait layout scaffolding --------------------------------------------
+# Behind a flag on purpose: the orientation decision is the user's, so this
+# makes it a toggle rather than a rework. Enable with `--portrait` or by
+# setting `portrait` in the save file.
+#
+# Landscape suits the Punch-Out framing; portrait suits one-handed commute
+# play, which is when someone actually wants to punch their boss. Nothing here
+# changes the default until that call is made.
+#
+# What it does: swaps the viewport to 1080x1920, re-anchors the HUD rows,
+# moves the face buttons to a bottom thumb arc, and re-centres the boss.
+var portrait: bool = false
+
+func _apply_portrait() -> void:
+	if not portrait:
+		return
+	var vp := get_window()
+	vp.content_scale_size = Vector2i(1080, 1920)
+	vp.size = Vector2i(540, 960)
+
+	# Health rows span the narrower width.
+	for n in [$Safe/RageTrack, $Safe/KoTrack]:
+		(n as Control).offset_left = 96.0
+		(n as Control).offset_right = -12.0
+	if _player_bar != null and _player_bar.get_parent() is Control:
+		var pt := _player_bar.get_parent() as Control
+		pt.offset_left = 96.0
+		pt.offset_right = -12.0
+
+	# Dialogue bubble gets taller (text wraps more in a narrow column).
+	var bubble := $Safe/Bubble as Control
+	bubble.offset_bottom = 420.0
+
+	# Boss re-centred for a 1080-wide frame, standing lower.
+	boss.offset_left = 280.0
+	boss.offset_right = 800.0
+	boss.offset_top = 700.0
+	boss.offset_bottom = 1940.0
+	boss.scale = Vector2(0.62, 0.62)
+
+	# Face buttons into a thumb arc near the bottom.
+	var cx := 540.0
+	var cy := 1620.0
+	var rr := 150.0
+	var places := {"Y": Vector2(cx, cy - rr), "A": Vector2(cx, cy + rr),
+		"X": Vector2(cx - rr, cy), "B": Vector2(cx + rr, cy)}
+	for k in places.keys():
+		if _buttons.has(k):
+			var b: Button = _buttons[k]
+			b.position = places[k] - b.size / 2.0
+
+	# Combo counter above the buttons rather than off to the side.
+	if _combo_label != null:
+		_combo_label.anchor_left = 0.0
+		_combo_label.anchor_right = 1.0
+		_combo_label.offset_left = 40.0
+		_combo_label.offset_right = -40.0
+		_combo_label.offset_top = 1180.0
+		_combo_label.offset_bottom = 1400.0
+	_apply_safe_area()

@@ -231,6 +231,55 @@ so `ResourceLoader.exists()` was false and the throw bailed silently.
   fixed response → **4**. Light head hits now sometimes rubber-neck too, so
   even chip damage varies.
 
+## `a0a9268` — v0.25: 346-line dialogue bank
+
+`scripts/dialogue.gd`. **Written offline, not generated at runtime** — that's
+all the "AI in the game" idea actually needs for dialogue, at zero app size,
+battery, latency or content-safety cost.
+
+| Category | Lines |
+|---|---|
+| Pre-fight, per level theme | 57 |
+| Taunts while guarding | 80 |
+| Hit reactions | 46 |
+| Miss taunts | 30 |
+| Low-HP desperation | 20 |
+| KO / player-down / level-win | 43 |
+| Combo reactions | 15 |
+| Gimmick-specific (thrown, pelted, bridge, car, moon) | 55 |
+
+Selection is a **bag shuffle** — a category works through every line before any
+repeat, so a 40-line pool never feels like five. Plain random clusters badly.
+
+Banter is sparse and escalates: below **28% HP** he switches to the desperation
+bank and starts offering raises; a 4+ combo gets its own reactions; otherwise
+hits only speak ~22% of the time. Lines never interrupt one still being typed.
+
+## `ad01f20` — v0.26: three more gimmick levels
+
+- **Level 7 "The Offsite" (bridge)** — he teeters and constantly claws back
+  toward upright; that restoring force *is* the tension. Shove from either side
+  and tip him past the point of no return.
+- **Level 8 "Company Car"** — tap to send the car across; impact lands partway
+  through the pass, so it's a timing shot, not a free hit.
+- **Level 9 "Moonshot"** — launch angle/power minigame on the existing throw
+  physics. Sweeping meter picks angle, second tap sets power, distance scores.
+
+All three plug into the v0.23 framework: a gimmick is a couple of functions
+plus a `LEVELS` entry, touching none of the fight code. **Nine levels total.**
+
+## v0.27 — portrait scaffolding (flag off by default)
+
+`--portrait` swaps the viewport to 1080×1920, re-anchors the HUD rows, moves
+the face buttons into a bottom thumb arc, re-centres the boss and repositions
+the combo counter. **The default is unchanged** — this makes the orientation
+call a toggle instead of a rework.
+
+Verified in portrait: bars, bubble, boss, buttons and combo all lay out
+correctly. **One gap it exposed:** `office.jpg` is landscape art, so portrait
+shows dark bands top and bottom. Portrait needs either a taller background or
+a cover-crop stretch — worth knowing before the orientation decision.
+
 ---
 
 ## Decisions made without you (flagged per the brief)
@@ -242,6 +291,17 @@ so `ResourceLoader.exists()` was false and the throw bailed silently.
    replaced by 9 cut from the new set. Style consistency beat variety.
 3. **Committing straight to `main`**, matching the auto-backup watcher workflow
    documented in CLAUDE.md rather than branching.
+
+## Two decisions waiting for you
+
+1. **Portrait vs landscape.** Scaffolding is in behind `--portrait`, so this is
+   now a toggle. My lean is portrait — the use case (one-handed, commute,
+   annoyed) beats the genre convention. Note that portrait needs a taller
+   background; the current office art is landscape.
+2. **The AI question** — `MAKE-IT-SELLABLE.md` §9, three concrete options.
+   Short version: the dialogue bank shipped tonight *is* the recommended
+   option, done offline at zero runtime cost. On-device LLM would add 1–2GB to
+   a $2 app.
 
 ## Known rough edges
 
