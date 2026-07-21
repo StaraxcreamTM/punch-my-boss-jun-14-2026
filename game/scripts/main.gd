@@ -256,7 +256,7 @@ const LEVEL_ATTACKS := {
 # a "look" use YOUR boss, i.e. whatever the player customised, so the
 # customisation stays meaningful instead of being overwritten.
 const ROSTER := {
-	2: {"who": "Deborah, Regional", "skin": 1, "hair": 2, "moustache": 0},
+	2: {"who": "Marcus, Facilities", "char": "man"},
 	3: {"who": "Big Terry, Ops", "char": "big"},
 	5: {"who": "The Facilitator", "skin": 2, "hair": 3, "moustache": 2},
 	6: {"who": "Priya, Head of Pods", "skin": 4, "hair": 2, "moustache": 0},
@@ -869,7 +869,8 @@ func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	# building. Capped so it never turns into a squeak.
 	_punch_player.pitch_scale = clampf(0.92 + float(combo) * 0.045, 0.9, 1.9) 		* randf_range(0.97, 1.04)
 	_punch_player.play()
-	_react_tex = _react[randi() % _react.size()]
+	if not _react.is_empty():
+		_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.28
 	# (The impact squash now comes from BossRig.squash via _react_hit.)
 	_flash_screen(0.22)
@@ -885,7 +886,8 @@ func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	_crit_player.play()
 	_punch_player.pitch_scale = clampf(1.15 + float(combo) * 0.05, 1.1, 2.1) 		* randf_range(0.97, 1.04)
 	_punch_player.play()
-	_react_tex = _react[_react.size() - 1 - (randi() % 3)]
+	if not _react.is_empty():
+		_react_tex = _react[_react.size() - 1 - (randi() % 3)]
 	_react_time = 0.5
 	# (The impact squash now comes from BossRig.squash via _react_hit.)
 	_flash_screen(0.55)
@@ -1212,7 +1214,8 @@ func _knockout() -> void:
 	Engine.time_scale = 0.35
 
 	# Hold the most battered face.
-	_react_tex = _react[_react.size() - 1]
+	if not _react.is_empty():
+		_react_tex = _react[_react.size() - 1]
 	_react_time = 999.0
 
 	ko_banner.text = "K.O.!"
@@ -2307,7 +2310,8 @@ func _impact_throw(speed: float) -> void:
 	_spawn_stars(at, int(4 + 8 * power))
 	_spawn_text(at + Vector2(0, -140), POW_WORDS[randi() % POW_WORDS.size()],
 		int(56 + 40 * power), Color(1, 0.86, 0.16))
-	_react_tex = _react[randi() % _react.size()]
+	if not _react.is_empty():
+		_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.35
 	rig_anim.squash(power)
 	if randf() < 0.4:
@@ -2353,7 +2357,8 @@ func _prop_hit(at: Vector2) -> void:
 	_spawn_stars(at, 8)
 	_spawn_text(at + Vector2(0, -90), POW_WORDS[randi() % POW_WORDS.size()], 72,
 		Color(1, 0.86, 0.16))
-	_react_tex = _react[randi() % _react.size()]
+	if not _react.is_empty():
+		_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.4
 	_react_hit(head_hit, at.x < r.position.x + r.size.x * 0.5, head_hit)
 	if randf() < 0.35:
@@ -2665,6 +2670,47 @@ const CHARS := {
 			["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(571, 588), Vector2(622, 612), 7],
 		],
 	},
+	"man": {
+		"dir": "res://assets/boss4/parts",
+		"scale": 1.21901, "ox": 47.89, "oy": 60.0,
+		"customisable": false,
+		"arm_gain": 1.0,
+		"bones": {
+			"Hip": Vector2(260, 743),
+			"Spine": Vector2(0, -195),
+			"Chest": Vector2(0, -91),
+			"Head": Vector2(0, -91),
+			"ArmL": Vector2(-139, -293),
+			"ForearmL": Vector2(-15, 158),
+			"FistL": Vector2(-5, 183),
+			"ArmR": Vector2(139, -293),
+			"ForearmR": Vector2(15, 158),
+			"FistR": Vector2(2, 183),
+			"ThighL": Vector2(-41, 85),
+			"ShinL": Vector2(-34, 207),
+			"FootL": Vector2(-7, 134),
+			"ThighR": Vector2(46, 85),
+			"ShinR": Vector2(37, 207),
+			"FootR": Vector2(7, 134),
+		},
+		"parts": [
+			["foot_l",  "Hip/ThighL/ShinL/FootL", Vector2(0, 876), Vector2(106, 910), 0],
+			["foot_r",  "Hip/ThighR/ShinR/FootR", Vector2(170, 876), Vector2(248, 910), 0],
+			["shin_l",  "Hip/ThighL/ShinL", Vector2(50, 756), Vector2(112, 800), 1],
+			["shin_r",  "Hip/ThighR/ShinR", Vector2(170, 756), Vector2(242, 800), 1],
+			["thigh_l", "Hip/ThighL", Vector2(2, 596), Vector2(140, 630), 2],
+			["thigh_r", "Hip/ThighR", Vector2(170, 596), Vector2(212, 630), 2],
+			["hips",    "Hip", Vector2(9, 516), Vector2(174, 560), 3],
+			["torso",   "Hip/Spine", Vector2(10, 296), Vector2(174, 400), 4],
+			["uarm_l",  "Hip/ArmL", Vector2(25, 409), Vector2(60, 320), 5],
+			["uarm_r",  "Hip/ArmR", Vector2(225, 412), Vector2(288, 320), 5],
+			["farm_l",  "Hip/ArmL/ForearmL", Vector2(10, 426), Vector2(48, 450), 6],
+			["farm_r",  "Hip/ArmR/ForearmR", Vector2(225, 426), Vector2(300, 450), 6],
+			["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(2, 556), Vector2(44, 600), 7],
+			["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(229, 556), Vector2(302, 600), 7],
+			["head",    "Hip/Spine/Chest/Head", Vector2(92, 0), Vector2(174, 250), 8],
+		],
+	},
 }
 
 var character: String = "suit"
@@ -2752,7 +2798,8 @@ func set_character(key: String, mat: Material) -> void:
 		_build_parts_suit(mat)
 	else:
 		_build_parts_from(cfg, mat)
-		_build_canvas_head(cfg, mat)
+		if cfg.has("faces"):
+			_build_canvas_head(cfg, mat)
 	_build_look_layers(mat)
 	_apply_look_no_save()
 	if rig_anim != null:
@@ -2818,8 +2865,13 @@ var _pose_spr: Sprite2D
 var _pose_name: String = ""
 var _pose_t: float = 0.0
 
+func _char_root() -> String:
+	# e.g. "res://assets/boss4/parts" -> "res://assets/boss4"
+	var d := String(CHARS[character].get("dir", "res://assets/boss2/parts"))
+	return d.get_base_dir()
+
 func _pose_dir() -> String:
-	return "res://assets/%s/poses" % ("boss3" if character == "big" else "boss2")
+	return "%s/poses" % _char_root()
 
 func has_pose(name: String) -> bool:
 	return ResourceLoader.exists("%s/%s.png" % [_pose_dir(), name])
@@ -3194,7 +3246,7 @@ var _anim_playing: bool = false
 var _anim_done: Callable
 
 func _anim_dir(name: String) -> String:
-	return "res://assets/%s/anim/%s" % ["boss3" if character == "big" else "boss2", name]
+	return "%s/anim/%s" % [_char_root(), name]
 
 func has_anim(name: String) -> bool:
 	return ResourceLoader.exists("%s/f000.png" % _anim_dir(name))
