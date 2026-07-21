@@ -134,7 +134,6 @@ const TYPE_CPS: float = 34.0
 # spiral-eyed dizzy faces.
 var _tex_neutral: Texture2D = load("res://assets/boss2/heads/neutral.png")
 var _tex_talk: Texture2D = load("res://assets/boss2/heads/talk.png")
-const REACT_FACES := ["hurt0", "hurt1", "hurt2", "dizzy0", "dizzy1", "dizzy2", "dizzy3"]
 var _react: Array[Texture2D] = []
 var _react_tex: Texture2D
 var _react_time: float = 0.0
@@ -302,10 +301,8 @@ var _fist_tex: Texture2D = load("res://assets/boss2/parts/glove.png")
 var _buttons := {}
 
 func _ready() -> void:
-	for face in REACT_FACES:
-		_react.append(load("res://assets/boss2/heads/%s.png" % face))
-	_react_tex = _react[0]
-
+	# Face sets are per-character now and loaded by _load_faces() during
+	# set_character(); this used to pre-load boss2's sheet unconditionally.
 	rig.resized.connect(_center_pivot)
 	_center_pivot()
 	# Let clicks pass through the boss Control to _unhandled_input, which
@@ -1038,6 +1035,10 @@ func _enter_windup() -> void:
 	_atk_whiffed = false
 	# The tell and the swing need articulated arms.
 	set_pose("palm" if (_is_feint and has_pose("palm")) else "")
+	# He scowls through the wind-up where that art exists.
+	if not _angry_faces.is_empty():
+		_react_tex = _angry_faces[randi() % _angry_faces.size()]
+		_react_time = _windup_dur() + ATTACK_DUR
 	if rig_anim != null:
 		rig_anim.unblock()
 		if _is_feint:
@@ -2049,9 +2050,6 @@ func apply_look() -> void:
 	_apply_look_no_save()
 	_save_prefs()
 
-func is_customisable() -> bool:
-	return bool(CHARS[character].get("head_canvas", true))
-
 func _apply_look_no_save() -> void:
 	# Only the default character has separable skin and a normalised head sheet.
 	# Tinting a character whose art bakes its own palette, or hanging the hair
@@ -2534,16 +2532,24 @@ const CHARS := {
 		"dir": "res://assets/boss2/parts",
 		"scale": 1.23431, "ox": 41.55, "oy": 60.0,
 		"head_canvas": true,          # normalised head sheet, swappable faces
-		"expressions": true,
+		"customisable": true,
+		"faces": {"dir": "res://assets/boss2/heads", "anchor": Vector2(230, 470),
+			"react": ["hurt0", "hurt1", "hurt2", "dizzy0", "dizzy1", "dizzy2", "dizzy3"],
+			"angry": []},
 		"bones": {},                  # uses the rest pose authored in main.tscn
 		"parts": [],                  # uses _PARTS
 	},
 	"big": {
 		"dir": "res://assets/boss3/parts",
 		"scale": 1.24211, "ox": -161.69, "oy": 60.0,
-		"head_canvas": false,         # single baked head, no expression set
-		"expressions": false,
+		"head_canvas": true,          # now has a harvested expression sheet
+		"customisable": false,        # his art bakes its own palette
 		"arm_gain": 0.5,              # short arms on a wide body: damp the swing
+		# Canvas pixels equal his base pixels 1:1 (skull normalised to 309, the
+		# width of his sliced rig head), so the bone anchor is a clean 260,400.
+		"faces": {"dir": "res://assets/boss3/heads", "anchor": Vector2(260, 400),
+			"react": ["hurt0", "hurt1", "hurt2", "hurt3", "shock", "worried"],
+			"angry": ["angry0", "angry1", "angry2", "angry3"]},
 		"bones": {
 			"Hip": Vector2(261, 830),
 			"Spine": Vector2(0, -236),
@@ -2577,7 +2583,6 @@ const CHARS := {
 			["farm_r",  "Hip/ArmR/ForearmR", Vector2(559, 468), Vector2(620, 495), 6],
 			["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(10, 588), Vector2(56, 612), 7],
 			["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(571, 588), Vector2(622, 612), 7],
-			["head",    "Hip/Spine/Chest/Head", Vector2(186, 0), Vector2(340, 250), 8],
 		],
 	},
 }
@@ -2604,7 +2609,36 @@ func _capture_bone_home() -> void:
 			_BONE_HOME[path] = b.position
 
 func has_expressions() -> bool:
-	return bool(CHARS[character].get("expressions", true))
+	return not CHARS[character].get("faces", {}).is_empty()
+
+func is_customisable() -> bool:
+	return bool(CHARS[character].get("customisable", false))
+
+# Load this character's face set. Both characters now use a normalised head
+# canvas; only the anchor and the roster of expressions differ.
+var _angry_faces: Array = []
+
+func _load_faces() -> void:
+	var f: Dictionary = CHARS[character].get("faces", {})
+	_react.clear()
+	_angry_faces.clear()
+	if f.is_empty():
+		return
+	var dir := String(f["dir"])
+	_tex_neutral = load("%s/neutral.png" % dir)
+	var talk_path := "%s/talk.png" % dir
+	_tex_talk = load(talk_path) if ResourceLoader.exists(talk_path) else _tex_neutral
+	for n in f.get("react", []):
+		var p2 := "%s/%s.png" % [dir, n]
+		if ResourceLoader.exists(p2):
+			_react.append(load(p2))
+	for n in f.get("angry", []):
+		var p3 := "%s/%s.png" % [dir, n]
+		if ResourceLoader.exists(p3):
+			_angry_faces.append(load(p3))
+	if _react.is_empty():
+		_react.append(_tex_neutral)
+	_react_tex = _react[0]
 
 # Swap the whole figure: bone rest pose, then the sliced pieces.
 func set_character(key: String, mat: Material) -> void:
@@ -2633,15 +2667,35 @@ func set_character(key: String, mat: Material) -> void:
 	_skin_sprites.clear()
 	head = null
 	torso_spr = null
-	if bool(cfg.get("head_canvas", true)):
+	_load_faces()
+	if String(cfg.get("dir", "")) == "res://assets/boss2/parts":
 		_build_parts_suit(mat)
 	else:
 		_build_parts_from(cfg, mat)
+		_build_canvas_head(cfg, mat)
 	_build_look_layers(mat)
 	_apply_look_no_save()
 	if rig_anim != null:
 		rig_anim.setup(skel, rig, head)
 		rig_anim.arm_gain = float(cfg.get("arm_gain", 1.0))
+
+# Head from the normalised expression canvas, anchored so face swaps can't jump.
+func _build_canvas_head(cfg: Dictionary, mat: Material) -> void:
+	var hb := skel.get_node_or_null(NodePath("Hip/Spine/Chest/Head"))
+	if hb == null or _tex_neutral == null:
+		return
+	var sc := float(cfg["scale"])
+	var anchor: Vector2 = cfg["faces"].get("anchor", Vector2.ZERO)
+	var s := Sprite2D.new()
+	s.texture = _tex_neutral
+	s.centered = false
+	s.scale = Vector2(sc, sc)
+	s.position = -anchor * sc
+	s.z_index = 8
+	s.material = mat.duplicate()
+	hb.add_child(s)
+	head = s
+	_char_sprites.append(s)
 
 func _build_parts_from(cfg: Dictionary, mat: Material) -> void:
 	var sc := float(cfg["scale"])
