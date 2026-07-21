@@ -120,8 +120,8 @@ var _shake_mag: float = 0.0
 var _flash: ColorRect
 const POW_WORDS := ["POW!", "BAM!", "WHAM!", "BOP!", "OOF!", "SMACK!", "KAPOW!"]
 
-# --- fight loop (Big Boy Boxing-style) ---
-enum BossState { GUARD, WINDUP, VULNERABLE }
+# --- fight loop (Punch-Out style) ---
+enum BossState { GUARD, WINDUP, ATTACK, RECOVER, VULNERABLE, STUNNED }
 var _state: int = BossState.GUARD
 var _state_time: float = 0.0
 var _koing: bool = false
@@ -129,6 +129,45 @@ var _prompt: Label
 var _crit_player: AudioStreamPlayer
 const WINDUP_DUR := 0.55
 const VULN_DUR := 1.35
+const ATTACK_DUR := 0.42
+
+# How hard he fights back. BAG never attacks (pure stress relief), DEFENSIVE
+# guards and dodges but won't swing, BRAWLER runs the full exchange.
+enum Difficulty { BAG, DEFENSIVE, BRAWLER }
+var difficulty: int = Difficulty.BRAWLER
+
+# In-flight attack bookkeeping.
+var _atk_side: bool = true
+var _atk_kind: int = 0        # 0 jab, 1 hook, 2 uppercut
+var _atk_resolved: bool = false
+var _atk_whiffed: bool = false
+
+# Player side of the exchange.
+var player_hp_max: float = 100.0
+var player_hp: float = 100.0
+var _dodge_time: float = 0.0
+var _dodge_dir: int = 0       # -1 left, +1 right, 0 duck
+const DODGE_WINDOW := 0.40
+var _player_bar: Panel
+
+# --- levels ----------------------------------------------------------------
+# Each level is a distinct fight. `pace` scales the gap between attacks, `dmg`
+# is what a landed boss punch costs, `hp` is his health pool. Later entries add
+# their own mechanics on top (see LEVELS[].gimmick).
+var level: int = 1
+const LEVELS := [
+	{"name": "The 1:1", "hp": 120.0, "pace": 1.35, "dmg": 8.0, "gimmick": "basic",
+	 "line": "So. Your numbers. They're... not great."},
+	{"name": "Performance Review", "hp": 170.0, "pace": 1.1, "dmg": 11.0, "gimmick": "feint",
+	 "line": "I've prepared some feedback. It's mostly negative."},
+	{"name": "The Reorg", "hp": 230.0, "pace": 0.9, "dmg": 14.0, "gimmick": "double",
+	 "line": "We're restructuring. You're the structure being restructured."},
+	{"name": "Crunch Season", "hp": 300.0, "pace": 0.75, "dmg": 17.0, "gimmick": "rage",
+	 "line": "Weekend's cancelled. So is your lunch. And your dignity."},
+]
+
+func _level_cfg() -> Dictionary:
+	return LEVELS[clampi(level - 1, 0, LEVELS.size() - 1)]
 
 # --- controls / attacks ---
 # The player's fist: the red boxing glove lifted from the cartoon hit frame, so
@@ -257,12 +296,35 @@ func _ready() -> void:
 	_combo_label.visible = false
 	safe.add_child(_combo_label)
 
+	# Player health bar, bottom-left, mirroring the boss's bar up top.
+	var ptrack := Panel.new()
+	ptrack.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	ptrack.position = Vector2(30, -96)
+	ptrack.size = Vector2(430, 34)
+	ptrack.z_index = 40
+	safe.add_child(ptrack)
+	_player_bar = Panel.new()
+	_player_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_player_bar.modulate = Color(0.30, 0.78, 1.0)
+	ptrack.add_child(_player_bar)
+	var plabel := Label.new()
+	plabel.text = "YOU"
+	plabel.add_theme_font_size_override("font_size", 26)
+	plabel.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	plabel.add_theme_constant_override("outline_size", 8)
+	plabel.position = Vector2(30, -134)
+	plabel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	safe.add_child(plabel)
+
 	ko_banner.modulate.a = 0.0
 	# The meter now fills toward FRENZY as the player lands hits, so it starts
 	# empty. (It used to be the boss's standing anger, which started at 12.)
 	_set_rage(0.0)
+	# Level 1 config drives the opening fight.
+	hp_max = float(_level_cfg().get("hp", 120.0))
 	_set_hp(hp_max)
-	_say(OPENERS[randi() % OPENERS.size()])
+	_set_player_hp(player_hp_max)
+	_say(String(_level_cfg().get("line", OPENERS[randi() % OPENERS.size()])))
 
 	var taunt_timer := Timer.new()
 	taunt_timer.wait_time = 3.8
@@ -377,6 +439,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_B: _press("B")
 				KEY_X: _press("X")
 				KEY_Y: _press("Y")
+				# Dodging: arrows / WSD. Left and right slip the punch, down
+				# ducks (which the uppercut punishes).
+				KEY_LEFT: _dodge(-1)
+				KEY_RIGHT: _dodge(1)
+				KEY_DOWN: _dodge(0)
 	elif event is InputEventJoypadButton:
 		if event.pressed:
 			match event.button_index:
@@ -384,6 +451,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				JOY_BUTTON_B: _press("B")
 				JOY_BUTTON_X: _press("X")
 				JOY_BUTTON_Y: _press("Y")
+				JOY_BUTTON_DPAD_LEFT: _dodge(-1)
+				JOY_BUTTON_DPAD_RIGHT: _dodge(1)
+				JOY_BUTTON_DPAD_DOWN: _dodge(0)
 	elif event is InputEventMouseButton:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -575,23 +645,46 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 			_spawn_text(Vector2(960.0, 300.0), "FRENZY!!", 130, Color(1, 0.24, 0.94))
 
 # --- boss fight state machine ---
+#
+# The Punch-Out exchange: GUARD -> WINDUP (readable tell) -> ATTACK (the player
+# must dodge on time) -> RECOVER. A dodged attack leaves him wide open, which is
+# the punish window; a landed one costs the player health. Timing is the game,
+# not mashing.
 
 func _update_fight(delta: float) -> void:
 	var lean := 0.0
 	var tint := Color(1, 1, 1)
 	_state_time -= delta
+	if _dodge_time > 0.0:
+		_dodge_time -= delta
 	match _state:
 		BossState.GUARD:
 			if _state_time <= 0.0:
-				_enter_windup()
+				if difficulty == Difficulty.BAG:
+					_enter_vulnerable()   # punching bag: always an opening
+				else:
+					_enter_windup()
 		BossState.WINDUP:
 			# Lean back + pulse orange so the "tell" is unmistakable.
-			var t := 1.0 - clampf(_state_time / WINDUP_DUR, 0.0, 1.0)
+			var t := 1.0 - clampf(_state_time / _windup_dur(), 0.0, 1.0)
 			lean = -0.22 * t
 			var pw := 0.5 + 0.5 * sin(_clock * 26.0)
 			tint = Color(1, 1, 1).lerp(Color(1.5, 0.7, 0.2), pw * t)
 			if _state_time <= 0.0:
-				_enter_vulnerable()
+				_enter_attack()
+		BossState.ATTACK:
+			# Resolve at the strike frame, partway through the swing.
+			if not _atk_resolved and _state_time <= ATTACK_DUR * 0.55:
+				_atk_resolved = true
+				_resolve_attack()
+			if _state_time <= 0.0:
+				if _atk_whiffed:
+					_enter_vulnerable()
+				else:
+					_enter_guard()
+		BossState.RECOVER:
+			if _state_time <= 0.0:
+				_enter_guard()
 		BossState.VULNERABLE:
 			# Flash yellow + show the prompt: this is the punish window.
 			var pv := 0.5 + 0.5 * sin(_clock * 14.0)
@@ -600,34 +693,161 @@ func _update_fight(delta: float) -> void:
 			_position_prompt(pv)
 			if _state_time <= 0.0:
 				_enter_guard()
+		BossState.STUNNED:
+			var ps := 0.5 + 0.5 * sin(_clock * 9.0)
+			tint = Color(1, 1, 1).lerp(Color(1.3, 1.3, 1.7), ps * 0.6)
+			_position_prompt(ps)
+			if _state_time <= 0.0:
+				_enter_guard()
 	# The wind-up lean feeds BossRig as a body offset — writing rig.rotation
 	# here directly would be overwritten by the rig's own compose pass.
 	if rig_anim != null:
 		rig_anim.lean = lean
 	boss.modulate = tint
 
-func _position_prompt(p: float) -> void:
-	var top: Vector2 = boss.get_global_transform() * Vector2(boss.size.x * 0.5, 0.0)
-	_prompt.pivot_offset = _prompt.size / 2.0
-	_prompt.global_position = top - Vector2(_prompt.size.x * 0.5, 46.0 + p * 12.0)
-	_prompt.scale = Vector2.ONE * (1.0 + p * 0.12)
+func _windup_dur() -> float:
+	# Later levels telegraph faster, so the dodge window tightens.
+	return maxf(0.22, WINDUP_DUR - float(level - 1) * 0.05)
 
 func _enter_guard() -> void:
 	_state = BossState.GUARD
-	_state_time = randf_range(2.6, 4.2)
+	_state_time = randf_range(2.6, 4.2) * _level_cfg().get("pace", 1.0)
 	_prompt.visible = false
 	boss.modulate = Color(1, 1, 1)
+	if rig_anim != null and difficulty != Difficulty.BAG:
+		rig_anim.block()
 
 func _enter_windup() -> void:
 	_state = BossState.WINDUP
-	_state_time = WINDUP_DUR
+	_state_time = _windup_dur()
 	_prompt.visible = false
 	_shake(4.0, 0.2)
+	# Pick the attack now so the tell can match the side it comes from.
+	_atk_side = randf() < 0.5
+	_atk_kind = randi() % 3
+	_atk_resolved = false
+	_atk_whiffed = false
+	if rig_anim != null:
+		rig_anim.unblock()
+		rig_anim.tell(_atk_side, _windup_dur())
+
+func _enter_attack() -> void:
+	_state = BossState.ATTACK
+	_state_time = ATTACK_DUR
+	if rig_anim != null:
+		match _atk_kind:
+			0:
+				rig_anim.jab(_atk_side)
+			1:
+				rig_anim.hook(_atk_side)
+			_:
+				rig_anim.uppercut(_atk_side)
+
+# Did the player dodge in time? A dodge in any direction beats a jab/hook; the
+# uppercut has to be dodged sideways (ducking into it is exactly wrong).
+func _resolve_attack() -> void:
+	var dodged := _dodge_time > 0.0
+	if dodged and _atk_kind == 2 and _dodge_dir == 0:
+		dodged = false
+	if dodged:
+		_atk_whiffed = true
+		_spawn_text(_text_anchor(not _atk_side), "MISS!", 72, Color(0.6, 1.0, 0.7))
+		_shake(6.0, 0.18)
+		if rig_anim != null:
+			rig_anim.body_pos = Vector2(0, 0)
+	else:
+		_hit_player()
+
+func _hit_player() -> void:
+	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0))
+	_flash_screen(0.42)
+	_shake(30.0, 0.4)
+	_hitstop(0.08)
+	_spawn_text(Vector2(960.0, 420.0), "OUCH!", 96, Color(1, 0.3, 0.25))
+	combo = 0
+	_set_player_hp(player_hp)
+	if player_hp <= 0.0:
+		_game_over()
 
 func _enter_vulnerable() -> void:
 	_state = BossState.VULNERABLE
 	_state_time = VULN_DUR
 	_prompt.visible = true
+	if rig_anim != null:
+		rig_anim.unblock()
+
+# Player dodge. Brief invulnerability window; direction matters against the
+# uppercut, which punishes ducking.
+func _dodge(dir: int) -> void:
+	if _koing:
+		return
+	_dodge_time = DODGE_WINDOW
+	_dodge_dir = dir
+	# The camera leans opposite the dodge so it reads as the player moving.
+	var shift := Vector2(-90.0 * float(dir), 30.0 if dir == 0 else 0.0)
+	var tw := create_tween()
+	tw.tween_property(safe, "position", shift, 0.10).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(safe, "position", Vector2.ZERO, 0.24).set_trans(Tween.TRANS_BACK)
+
+func _set_player_hp(v: float) -> void:
+	player_hp = clampf(v, 0.0, player_hp_max)
+	if _player_bar != null:
+		_player_bar.anchor_right = player_hp / player_hp_max
+		_player_bar.offset_right = 0.0
+
+func _game_over() -> void:
+	if _koing:
+		return
+	_koing = true
+	_say("Ha! Back to your desk, champ.")
+	ko_banner.text = "YOU'RE FIRED"
+	ko_banner.pivot_offset = ko_banner.size / 2.0
+	ko_banner.modulate.a = 1.0
+	ko_banner.scale = Vector2(0.5, 0.5)
+	var bt := create_tween()
+	bt.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.3) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if rig_anim != null:
+		rig_anim.laugh()
+	_flash_screen(0.5)
+	_shake(24.0, 0.5)
+	await get_tree().create_timer(2.4).timeout
+	_restart_level()
+
+# Restart the current level with everything reset.
+func _restart_level() -> void:
+	var cfg := _level_cfg()
+	hp_max = float(cfg.get("hp", 120.0))
+	_set_hp(hp_max)
+	_set_player_hp(player_hp_max)
+	_set_rage(0.0)
+	combo = 0
+	frenzy = 0.0
+	_react_time = 0.0
+	if rig_anim != null:
+		rig_anim.revive()
+		rig_anim.lean = 0.0
+		rig_anim.own_body = true
+	var ft := create_tween()
+	ft.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
+	_koing = false
+	_say(String(cfg.get("line", "")))
+	_enter_guard()
+
+# Heavy punish: he's dazed and wide open for a while.
+func _enter_stunned(duration: float) -> void:
+	_state = BossState.STUNNED
+	_state_time = duration
+	_prompt.visible = true
+	if rig_anim != null:
+		rig_anim.unblock()
+		rig_anim.wobble_stun(duration)
+
+func _position_prompt(p: float) -> void:
+	var top: Vector2 = boss.get_global_transform() * Vector2(boss.size.x * 0.5, 0.0)
+	_prompt.pivot_offset = _prompt.size / 2.0
+	_prompt.global_position = top - Vector2(_prompt.size.x * 0.5, 46.0 + p * 12.0)
+	_prompt.scale = Vector2.ONE * (1.0 + p * 0.12)
 
 func _knockout() -> void:
 	_koing = true
