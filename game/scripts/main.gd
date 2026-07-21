@@ -1588,6 +1588,10 @@ func _setup_shots() -> void:
 	# thrown glove is only on screen ~0.22s, so the default 0.30s cadence can
 	# skip every single one).
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--winsize="):
+			var wh := a.get_slice("=", 1).split("x")
+			if wh.size() == 2:
+				get_window().size = Vector2i(int(wh[0]), int(wh[1]))
 		if a.begins_with("--level="):
 			level = clampi(int(a.get_slice("=", 1)), 1, LEVELS.size())
 			print("[shots] level %d (%s)" % [level, _level_cfg().get("gimmick", "punch")])
@@ -2883,6 +2887,11 @@ func play_entrance() -> void:
 # door; everything else hangs off the main menu.
 const MENU_ROW_H := 108.0
 const MENU_W := 1120.0
+# Customise two-column layout: left options column width, and how far the boss
+# preview shifts right (into the clear half) so the option rows never cover him.
+const MENU_COL_W := 940.0
+const BOSS_PREVIEW_SHIFT := 360.0
+var _boss_home: Vector2 = Vector2.ZERO   # authored Boss position, captured once
 
 var _menu: Control
 var _menu_dim: ColorRect
@@ -2892,6 +2901,7 @@ var _menu_back: Button
 var unlocked: int = 1          # highest level reached, persisted
 
 func _build_menu_ui() -> void:
+	_boss_home = boss.position
 	_menu = Control.new()
 	_menu.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_menu.z_index = 95
@@ -2974,7 +2984,28 @@ func open_menu(kind: int) -> void:
 	_clear_rows()
 	_menu_rows.add_theme_constant_override("separation", 16)
 	_menu_rows.offset_top = 215.0
-	# Customise wants the boss visible behind it; the rest dim him right out.
+	# Customise is a two-column layout: options on the LEFT, the live character
+	# preview on the RIGHT. Every other screen centres its rows over the (dimmed)
+	# boss. The bug this fixes: centred option rows sat right on top of his head
+	# - exactly the part hair/moustache/skin change - so you couldn't see the
+	# edits you were making.
+	if kind == Phase.CUSTOMIZE:
+		_menu_rows.anchor_left = 0.0
+		_menu_rows.anchor_right = 0.0
+		_menu_rows.offset_left = 60.0
+		_menu_rows.offset_right = 60.0 + MENU_COL_W
+		_menu_rows.offset_top = 250.0
+		# Offset from the AUTHORED position, not absolute: boss.position is not
+		# additive, so setting it to (shift,0) earlier overwrote his ~817 base
+		# offset and slid him left instead of right, straight under the title.
+		boss.position = _boss_home + Vector2(BOSS_PREVIEW_SHIFT, 0.0)
+	else:
+		_menu_rows.anchor_left = 0.5
+		_menu_rows.anchor_right = 0.5
+		_menu_rows.offset_left = -MENU_W * 0.5
+		_menu_rows.offset_right = MENU_W * 0.5
+		boss.position = _boss_home
+	# Customise wants the boss visible beside it; the rest dim him right out.
 	var a := 0.42 if kind == Phase.CUSTOMIZE else 0.86
 	_menu_dim.color = Color(0.05, 0.03, 0.08, a)
 	_menu_back.visible = kind != Phase.MENU
@@ -2990,6 +3021,8 @@ func open_menu(kind: int) -> void:
 
 func close_menu() -> void:
 	_menu.visible = false
+	# Undo the customise-screen preview shift so a fight never starts off-centre.
+	boss.position = _boss_home
 
 func _menu_back_pressed() -> void:
 	if phase != Phase.MENU:
