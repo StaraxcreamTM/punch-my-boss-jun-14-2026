@@ -187,6 +187,10 @@ const LEVELS := [
 	 "line": "We're restructuring. You're the structure being restructured."},
 	{"name": "Crunch Season", "hp": 300.0, "pace": 0.75, "dmg": 17.0, "gimmick": "rage",
 	 "line": "Weekend's cancelled. So is your lunch. And your dignity."},
+	{"name": "Team Building", "hp": 260.0, "pace": 1.2, "dmg": 0.0, "gimmick": "throw",
+	 "line": "Trust fall! You catch me, right? ...Right?"},
+	{"name": "Open Plan", "hp": 240.0, "pace": 1.2, "dmg": 0.0, "gimmick": "objects",
+	 "line": "No walls means no place to hide. For YOU, obviously."},
 ]
 
 func _level_cfg() -> Dictionary:
@@ -429,9 +433,13 @@ func _process(delta: float) -> void:
 	overlay.position = sh
 	safe.position = sh
 
-	# The boss fight loop, only while an actual fight is running.
+	# The boss fight loop, only while an actual fight is running. Gimmick
+	# levels swap it out for their own mechanic.
 	if not _koing and phase == Phase.FIGHT:
-		_update_fight(delta)
+		if _gimmick() in ["throw", "objects"]:
+			_update_gimmick(delta)
+		else:
+			_update_fight(delta)
 
 	# Idle life + any in-flight animation offsets, composed onto the bones.
 	if rig_anim != null:
@@ -548,11 +556,24 @@ func _unhandled_input(event: InputEvent) -> void:
 				JOY_BUTTON_DPAD_DOWN: _dodge(0)
 	elif event is InputEventMouseButton:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
-		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			if phase == Phase.FIGHT:
-				_punch_click(get_global_mouse_position())
-			else:
-				_advance_screen()
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			var mp := get_global_mouse_position()
+			if phase != Phase.FIGHT:
+				if event.pressed:
+					_advance_screen()
+			elif _gimmick() == "throw":
+				if event.pressed:
+					var r := (boss as Control).get_global_rect().grow(60.0)
+					if r.has_point(mp):
+						_grab = true
+						_grab_off = mp - _boss_at
+				else:
+					_grab = false
+			elif _gimmick() == "objects":
+				if event.pressed:
+					_throw_prop(mp)
+			elif event.pressed:
+				_punch_click(mp)
 
 # Click/tap anywhere: throw a fist at that exact point. Hits on the boss deal
 # damage; clicks in open air still swing (and whiff).
@@ -1338,6 +1359,10 @@ func _setup_shots() -> void:
 	# --shots-fast samples densely enough to catch short-lived effects (the
 	# thrown glove is only on screen ~0.22s, so the default 0.30s cadence can
 	# skip every single one).
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--level="):
+			level = clampi(int(a.get_slice("=", 1)), 1, LEVELS.size())
+			print("[shots] level %d (%s)" % [level, _level_cfg().get("gimmick", "punch")])
 	if "--shots-fast" in OS.get_cmdline_user_args():
 		_shot_interval = 0.09
 		_demo_period = 0.45
@@ -1387,6 +1412,20 @@ func _demo_tick() -> void:
 		_advance_screen()
 		return
 	_demo_step += 1
+	# Gimmick levels need their own scripted play.
+	match _gimmick():
+		"throw":
+			# Fling him: grab, whip the velocity, release.
+			_grab = false
+			_boss_vel = Vector2(randf_range(-1100.0, 1100.0), randf_range(-1250.0, -650.0))
+			return
+		"objects":
+			var r := (boss as Control).get_global_rect()
+			_throw_prop(r.position + Vector2(r.size.x * randf_range(0.2, 0.8),
+				r.size.y * randf_range(0.1, 0.7)))
+			return
+		_:
+			pass
 	match _demo_step % 8:
 		1, 2:
 			_punch(_demo_step % 2 == 0, true)    # head
@@ -1623,6 +1662,7 @@ func _start_fight() -> void:
 	_koing = false
 	if rig_anim != null:
 		rig_anim.revive()
+	_start_gimmick()
 	ko_banner.text = "FIGHT!"
 	ko_banner.pivot_offset = ko_banner.size / 2.0
 	ko_banner.modulate.a = 1.0
@@ -1631,7 +1671,11 @@ func _start_fight() -> void:
 	t.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.25).set_trans(Tween.TRANS_BACK)
 	t.tween_interval(0.5)
 	t.tween_property(ko_banner, "modulate:a", 0.0, 0.35)
-	_enter_guard()
+	if _gimmick() in ["throw", "objects"]:
+		_prompt.visible = false
+		_say(String(_level_cfg().get("line", "")))
+	else:
+		_enter_guard()
 
 func _show_gameover(won: bool) -> void:
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
@@ -1741,3 +1785,145 @@ func cycle_look(what: String, dir: int = 1) -> void:
 		"moustache":
 			look_moustache = posmod(look_moustache + dir, MOUSTACHE_OPTS.size())
 	apply_look()
+
+# --- gimmick levels ---------------------------------------------------------
+# Each level plugs in a mechanic by name. "punch" is the Punch-Out fight; the
+# rest replace player input and the boss's behaviour while reusing the same
+# rig, damage funnel, scoring and reactions. A new gimmick is a couple of
+# functions here plus a LEVELS entry - it does not touch the fight code.
+const PROPS := ["stapler", "mug", "keyboard", "plant"]
+
+# THROW: grab the boss and fling him around the room. He bounces, and every
+# impact costs him health.
+var _grab: bool = false
+var _grab_off: Vector2 = Vector2.ZERO
+var _boss_vel: Vector2 = Vector2.ZERO
+var _boss_at: Vector2 = Vector2.ZERO
+var _last_mouse: Vector2 = Vector2.ZERO
+var _spin: float = 0.0
+const THROW_GRAV := 2600.0
+const THROW_DAMP := 0.62
+
+func _gimmick() -> String:
+	return String(_level_cfg().get("gimmick", "punch"))
+
+func _gimmick_uses_rig_body() -> bool:
+	# Modes that drive rig.position themselves must take the body from BossRig.
+	return _gimmick() == "throw"
+
+func _start_gimmick() -> void:
+	_boss_at = Vector2.ZERO
+	_boss_vel = Vector2.ZERO
+	_spin = 0.0
+	_grab = false
+	if rig_anim != null:
+		rig_anim.own_body = not _gimmick_uses_rig_body()
+
+# Called every frame while a gimmick level is running.
+func _update_gimmick(delta: float) -> void:
+	match _gimmick():
+		"throw":
+			_update_throw(delta)
+		_:
+			pass
+
+func _update_throw(delta: float) -> void:
+	if rig_anim == null:
+		return
+	if _grab:
+		# Held: follow the pointer, and remember the motion for release velocity.
+		var m := get_global_mouse_position()
+		var target := m - _grab_off
+		_boss_vel = (target - _boss_at) / maxf(delta, 0.0001)
+		_boss_at = target
+		_spin = lerpf(_spin, clampf(_boss_vel.x * 0.0006, -1.2, 1.2), 8.0 * delta)
+	else:
+		_boss_vel.y += THROW_GRAV * delta
+		_boss_at += _boss_vel * delta
+		_spin += _boss_vel.x * 0.00025
+		# Bounce off floor, ceiling and side walls. The ceiling matters: with
+		# only a floor he sailed clean out of the top of the frame and the
+		# player lost sight of him for seconds at a time.
+		var floor_y := 0.0
+		var ceil_y := -430.0
+		var wall := 470.0
+		if _boss_at.y < ceil_y:
+			_boss_at.y = ceil_y
+			if absf(_boss_vel.y) > 240.0:
+				_impact_throw(absf(_boss_vel.y))
+			_boss_vel.y = -_boss_vel.y * THROW_DAMP
+			_boss_vel.x *= 0.86
+		if _boss_at.y > floor_y:
+			_boss_at.y = floor_y
+			if absf(_boss_vel.y) > 240.0:
+				_impact_throw(absf(_boss_vel.y))
+			_boss_vel.y = -_boss_vel.y * THROW_DAMP
+			_boss_vel.x *= 0.80
+		if absf(_boss_at.x) > wall:
+			_boss_at.x = clampf(_boss_at.x, -wall, wall)
+			if absf(_boss_vel.x) > 240.0:
+				_impact_throw(absf(_boss_vel.x))
+			_boss_vel.x = -_boss_vel.x * THROW_DAMP
+		_spin = lerpf(_spin, 0.0, 1.4 * delta)
+	rig.position = _boss_at
+	rig.rotation = _spin
+
+func _impact_throw(speed: float) -> void:
+	var power := clampf(speed / 1400.0, 0.25, 1.6)
+	var at: Vector2 = boss.get_global_transform() * (boss.size * 0.5)
+	_punch_player.pitch_scale = randf_range(0.7, 1.0)
+	_punch_player.play()
+	_shake(10.0 + 16.0 * power, 0.22)
+	_spawn_stars(at, int(4 + 8 * power))
+	_spawn_text(at + Vector2(0, -140), POW_WORDS[randi() % POW_WORDS.size()],
+		int(56 + 40 * power), Color(1, 0.86, 0.16))
+	_react_tex = _react[randi() % _react.size()]
+	_react_time = 0.35
+	rig_anim.squash(power)
+	_apply_damage(at, 4.0 + 9.0 * power, power > 1.0)
+	if hp <= 0.0:
+		_knockout()
+
+# OBJECTS: hurl office supplies. Tap anywhere to throw the next prop at that
+# point; it arcs in from the bottom of the screen and detonates on arrival.
+func _throw_prop(at: Vector2) -> void:
+	var name: String = PROPS[randi() % PROPS.size()]
+	var path := "res://assets/boss2/props/%s.png" % name
+	if not ResourceLoader.exists(path):
+		return
+	var s := Sprite2D.new()
+	s.texture = load(path)
+	s.z_index = 80
+	var from := Vector2(randf_range(300.0, 1620.0), 1250.0)
+	s.global_position = from
+	s.scale = Vector2(1.6, 1.6)
+	add_child(s)
+	var spin := randf_range(-10.0, 10.0)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(s, "global_position", at, 0.30).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(s, "rotation", spin, 0.30)
+	tw.tween_property(s, "scale", Vector2(0.9, 0.9), 0.30)
+	await tw.finished
+	s.queue_free()
+	_prop_hit(at)
+
+func _prop_hit(at: Vector2) -> void:
+	var r := (boss as Control).get_global_rect().grow(10.0)
+	if not r.has_point(at):
+		_spawn_text(at, "miss", 34, Color(0.8, 0.82, 0.88))
+		return
+	var head_hit := _part_global_rect(head).grow(10.0).has_point(at)
+	_punch_player.pitch_scale = randf_range(1.0, 1.3)
+	_punch_player.play()
+	_flash_screen(0.2)
+	_shake(14.0, 0.26)
+	_spawn_stars(at, 8)
+	_spawn_text(at + Vector2(0, -90), POW_WORDS[randi() % POW_WORDS.size()], 72,
+		Color(1, 0.86, 0.16))
+	_react_tex = _react[randi() % _react.size()]
+	_react_time = 0.4
+	_react_hit(head_hit, at.x < r.position.x + r.size.x * 0.5, head_hit)
+	_apply_damage(at, 7.0 if head_hit else 5.0, head_hit)
+	if hp <= 0.0:
+		_knockout()
