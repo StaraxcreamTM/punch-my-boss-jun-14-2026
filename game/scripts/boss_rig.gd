@@ -55,6 +55,12 @@ var body_scale: Vector2 = Vector2.ZERO   # additive on top of Vector2.ONE
 var lean: float = 0.0
 
 var idle_amp: float = 1.0         # scales the idle motion (agitation)
+# Per-character damping for arm swing. Amplitudes tuned on a slim figure sweep
+# a heavyset one's short arms right across its own belly, so wide characters
+# turn this down. Applied to the additive offsets only - idle sway is already
+# scaled by idle_amp.
+var arm_gain: float = 1.0
+const _ARM_KEYS := ["uarmL", "uarmR", "farmL", "farmR", "handL", "handR"]
 var idle_enabled: bool = true
 # When false, update() leaves the rig Control alone so cutscene code (the K.O.
 # launch) can tween it directly without the two fighting over the transform.
@@ -136,7 +142,10 @@ func _apply(key: String, idle_rot: float, idle_pos: Vector2) -> void:
 	var b: Bone2D = _bone.get(key)
 	if b == null:
 		return
-	b.rotation = idle_rot + _rot[key]
+	var add: float = _rot[key]
+	if arm_gain != 1.0 and key in _ARM_KEYS:
+		add *= arm_gain
+	b.rotation = idle_rot + add
 	b.position = _rest_pos[key] + idle_pos + _pos[key]
 	var s: Vector2 = _scale[key]
 	b.scale = Vector2.ONE + s

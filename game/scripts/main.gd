@@ -257,11 +257,11 @@ const LEVEL_ATTACKS := {
 # customisation stays meaningful instead of being overwritten.
 const ROSTER := {
 	2: {"who": "Deborah, Regional", "skin": 1, "hair": 2, "moustache": 0},
-	3: {"who": "Alan from Finance", "skin": 3, "hair": 1, "moustache": 1},
+	3: {"who": "Big Terry, Ops", "char": "big"},
 	5: {"who": "The Facilitator", "skin": 2, "hair": 3, "moustache": 2},
 	6: {"who": "Priya, Head of Pods", "skin": 4, "hair": 2, "moustache": 0},
 	7: {"who": "Gareth, Offsite Lead", "skin": 1, "hair": 1, "moustache": 2},
-	8: {"who": "The Fleet Manager", "skin": 5, "hair": 3, "moustache": 1},
+	8: {"who": "Big Terry, Ops", "char": "big"},
 	9: {"who": "Chief Vision Officer", "skin": 2, "hair": 2, "moustache": 2},
 }
 
@@ -269,6 +269,12 @@ const ROSTER := {
 # own saved look - those are the fights against YOUR boss.
 func _apply_opponent() -> void:
 	var r: Dictionary = ROSTER.get(level, {})
+	# Swap the whole figure if this opponent is a different character.
+	var want := String(r.get("char", "suit"))
+	if want != character and _outline_mat != null:
+		set_character(want, _outline_mat)
+	if not has_expressions():
+		return          # look layers are authored into that character's art
 	if r.is_empty():
 		look_skin = _own_skin
 		look_hair = _own_hair
@@ -369,7 +375,9 @@ func _ready() -> void:
 	outline_mat.set_shader_parameter("width", 4.5)
 	# Hang the sliced cutout pieces off the bones. Each piece carries the same
 	# outline shader so the whole figure reads as one drawn character.
-	_build_cutout_boss(outline_mat)
+	_capture_bone_home()
+	_outline_mat = outline_mat
+	set_character("suit", outline_mat)
 	# Remember the rest pose so idle motion and hit reactions are offsets from
 	# it rather than absolute positions (the head used to snap to Vector2.ZERO
 	# after a hit, permanently shifting it off its anchored rest spot).
@@ -575,7 +583,11 @@ func _process(delta: float) -> void:
 
 	# Head expression: a recent punch wins, then talking, otherwise neutral.
 	var talking := _type_shown < total
-	if _react_time > 0.0:
+	if not has_expressions():
+		# No face set for this character - reactions play on the head bone
+		# instead. Still tick the timer so the state doesn't stick.
+		_react_time = maxf(0.0, _react_time - delta)
+	elif _react_time > 0.0:
 		_react_time -= delta
 		head.texture = _react_tex
 	elif talking:
@@ -1400,7 +1412,7 @@ func _make_part(tex: Texture2D, origin: Vector2, pivot: Vector2, z: int,
 	bone.add_child(s)
 	return s
 
-func _build_cutout_boss(mat: Material) -> void:
+func _build_parts_suit(mat: Material) -> void:
 	if skel == null:
 		return
 	var skin_parts := ["uarm_l", "uarm_r", "farm_l", "farm_r", "hand_l", "hand_r"]
@@ -1416,6 +1428,7 @@ func _build_cutout_boss(mat: Material) -> void:
 		if entry[0] in skin_parts:
 			pm = mat.duplicate()
 		var spr := _make_part(tex, entry[2], entry[3], entry[4], bone, pm)
+		_char_sprites.append(spr)
 		if entry[0] in skin_parts:
 			_skin_sprites.append(spr)
 		if entry[0] == "torso":
@@ -1425,7 +1438,7 @@ func _build_cutout_boss(mat: Material) -> void:
 	if hb != null:
 		head = _make_part(_tex_neutral, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z, hb, mat.duplicate())
 		_skin_sprites.append(head)
-	_build_look_layers(mat)
+		_char_sprites.append(head)
 	# The old flat claymation art is superseded by the cutout pieces.
 	body_spr.visible = false
 	old_head.visible = false
@@ -2002,6 +2015,9 @@ func _build_look_layers(mat: Material) -> void:
 	var hb = skel.get_node_or_null(NodePath("Hip/Spine/Chest/Head"))
 	if hb == null:
 		return
+	for old in [_hair_spr, _moustache_spr]:
+		if old != null and is_instance_valid(old):
+			old.queue_free()
 	# Accessories sit above the head sprite (HEAD_Z) so they read as worn.
 	_hair_spr = _make_part(null, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z + 1, hb, mat)
 	_moustache_spr = _make_part(null, Vector2.ZERO, HEAD_ANCHOR, HEAD_Z + 2, hb, mat)
@@ -2021,7 +2037,24 @@ func apply_look() -> void:
 	_apply_look_no_save()
 	_save_prefs()
 
+func is_customisable() -> bool:
+	return bool(CHARS[character].get("head_canvas", true))
+
 func _apply_look_no_save() -> void:
+	# Only the default character has separable skin and a normalised head sheet.
+	# Tinting a character whose art bakes its own palette, or hanging the hair
+	# and moustache layers on it, just paints slabs over the artwork.
+	if not is_customisable():
+		for s2 in _skin_sprites:
+			if s2 != null and is_instance_valid(s2):
+				var mm := s2.material as ShaderMaterial
+				if mm != null:
+					mm.set_shader_parameter("skin_enabled", false)
+		if _hair_spr != null and is_instance_valid(_hair_spr):
+			_hair_spr.visible = false
+		if _moustache_spr != null and is_instance_valid(_moustache_spr):
+			_moustache_spr.visible = false
+		return
 	# Skin: only the pieces that actually show skin get the recolour path
 	# switched on, so the shirt and trousers can never be caught by it.
 	var tone: Color = SKIN_TONES[posmod(look_skin, SKIN_TONES.size())]
@@ -2475,3 +2508,152 @@ func _apply_portrait() -> void:
 		_combo_label.offset_top = 1180.0
 		_combo_label.offset_bottom = 1400.0
 	_apply_safe_area()
+
+# --- multi-character rig ----------------------------------------------------
+# One skeleton, many characters. Each entry supplies its own slice table, bone
+# rest pose and art scale, so bodies with completely different proportions ride
+# the same bones and the same animation library. Adding a character is data.
+#
+# `expressions` lists which head textures exist. Characters without a set fall
+# back to head-bone motion for reactions instead of swapping faces.
+const CHARS := {
+	"suit": {
+		"dir": "res://assets/boss2/parts",
+		"scale": 1.23431, "ox": 41.55, "oy": 60.0,
+		"head_canvas": true,          # normalised head sheet, swappable faces
+		"expressions": true,
+		"bones": {},                  # uses the rest pose authored in main.tscn
+		"parts": [],                  # uses _PARTS
+	},
+	"big": {
+		"dir": "res://assets/boss3/parts",
+		"scale": 1.24211, "ox": -161.69, "oy": 60.0,
+		"head_canvas": false,         # single baked head, no expression set
+		"expressions": false,
+		"arm_gain": 0.5,              # short arms on a wide body: damp the swing
+		"bones": {
+			"Hip": Vector2(261, 830),
+			"Spine": Vector2(0, -236),
+			"Chest": Vector2(0, -112),
+			"Head": Vector2(0, -112),
+			"ArmL": Vector2(-338, -323),
+			"ForearmL": Vector2(-12, 168),
+			"FistL": Vector2(-2, 145),
+			"ArmR": Vector2(338, -323),
+			"ForearmR": Vector2(10, 168),
+			"FistR": Vector2(2, 145),
+			"ThighL": Vector2(-124, 124),
+			"ShinL": Vector2(2, 137),
+			"FootL": Vector2(-15, 75),
+			"ThighR": Vector2(122, 124),
+			"ShinR": Vector2(-1, 137),
+			"FootR": Vector2(14, 75),
+		},
+		"parts": [
+			["foot_l",  "Hip/ThighL/ShinL/FootL", Vector2(134, 862), Vector2(230, 890), 0],
+			["foot_r",  "Hip/ThighR/ShinR/FootR", Vector2(369, 862), Vector2(448, 890), 0],
+			["shin_l",  "Hip/ThighL/ShinL", Vector2(174, 804), Vector2(242, 830), 1],
+			["shin_r",  "Hip/ThighR/ShinR", Vector2(367, 804), Vector2(437, 830), 1],
+			["thigh_l", "Hip/ThighL", Vector2(136, 688), Vector2(240, 720), 2],
+			["thigh_r", "Hip/ThighR", Vector2(336, 688), Vector2(438, 720), 2],
+			["hips",    "Hip", Vector2(96, 564), Vector2(340, 620), 3],
+			["torso",   "Hip/Spine", Vector2(0, 228), Vector2(340, 430), 4],
+			["uarm_l",  "Hip/ArmL", Vector2(1, 355), Vector2(68, 360), 5],
+			["uarm_r",  "Hip/ArmR", Vector2(530, 355), Vector2(612, 360), 5],
+			["farm_l",  "Hip/ArmL/ForearmL", Vector2(0, 468), Vector2(58, 495), 6],
+			["farm_r",  "Hip/ArmR/ForearmR", Vector2(559, 468), Vector2(620, 495), 6],
+			["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(10, 588), Vector2(56, 612), 7],
+			["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(571, 588), Vector2(622, 612), 7],
+			["head",    "Hip/Spine/Chest/Head", Vector2(186, 0), Vector2(340, 250), 8],
+		],
+	},
+}
+
+var character: String = "suit"
+var _outline_mat: Material
+var _char_sprites: Array = []
+
+# The rest pose authored in main.tscn, captured once at startup so switching
+# back to the default character restores it exactly.
+const BONE_PATHS := ["Hip", "Hip/Spine", "Hip/Spine/Chest", "Hip/Spine/Chest/Head",
+	"Hip/ArmL", "Hip/ArmL/ForearmL", "Hip/ArmL/ForearmL/FistL",
+	"Hip/ArmR", "Hip/ArmR/ForearmR", "Hip/ArmR/ForearmR/FistR",
+	"Hip/ThighL", "Hip/ThighL/ShinL", "Hip/ThighL/ShinL/FootL",
+	"Hip/ThighR", "Hip/ThighR/ShinR", "Hip/ThighR/ShinR/FootR"]
+var _BONE_HOME: Dictionary = {}
+
+func _capture_bone_home() -> void:
+	if not _BONE_HOME.is_empty() or skel == null:
+		return
+	for path in BONE_PATHS:
+		var b := skel.get_node_or_null(NodePath(path)) as Bone2D
+		if b != null:
+			_BONE_HOME[path] = b.position
+
+func has_expressions() -> bool:
+	return bool(CHARS[character].get("expressions", true))
+
+# Swap the whole figure: bone rest pose, then the sliced pieces.
+func set_character(key: String, mat: Material) -> void:
+	if not CHARS.has(key):
+		return
+	character = key
+	var cfg: Dictionary = CHARS[key]
+	# Bone rest pose. "suit" restores whatever main.tscn authored.
+	var bones: Dictionary = cfg.get("bones", {})
+	for path in _BONE_HOME.keys():
+		var b := skel.get_node_or_null(NodePath(path)) as Bone2D
+		if b == null:
+			continue
+		# CHARS keys bones by short name ("ArmL"); _BONE_HOME by full path
+		# ("Hip/ArmL"). Looking up the full path in CHARS silently missed every
+		# entry, so the new character wore the default character's skeleton.
+		var leaf := String(path).get_slice("/", String(path).get_slice_count("/") - 1)
+		var pos: Vector2 = bones.get(leaf, _BONE_HOME[path])
+		b.position = pos
+		b.rest = Transform2D(0.0, pos)
+	# Rebuild the art.
+	for s in _char_sprites:
+		if is_instance_valid(s):
+			s.queue_free()
+	_char_sprites.clear()
+	_skin_sprites.clear()
+	head = null
+	torso_spr = null
+	if bool(cfg.get("head_canvas", true)):
+		_build_parts_suit(mat)
+	else:
+		_build_parts_from(cfg, mat)
+	_build_look_layers(mat)
+	_apply_look_no_save()
+	if rig_anim != null:
+		rig_anim.setup(skel, rig, head)
+		rig_anim.arm_gain = float(cfg.get("arm_gain", 1.0))
+
+func _build_parts_from(cfg: Dictionary, mat: Material) -> void:
+	var sc := float(cfg["scale"])
+	var dir := String(cfg["dir"])
+	for e in cfg["parts"]:
+		var bone := skel.get_node_or_null(NodePath(e[1]))
+		if bone == null:
+			continue
+		var path := "%s/%s.png" % [dir, e[0]]
+		if not ResourceLoader.exists(path):
+			push_warning("character art missing: %s" % path)
+			continue
+		var s := Sprite2D.new()
+		s.texture = load(path)
+		s.centered = false
+		s.scale = Vector2(sc, sc)
+		s.position = (Vector2(e[2]) - Vector2(e[3])) * sc
+		s.z_index = int(e[4])
+		s.material = mat.duplicate()
+		bone.add_child(s)
+		_char_sprites.append(s)
+		if e[0] == "torso":
+			torso_spr = s
+		elif e[0] == "head":
+			head = s
+			_skin_sprites.append(s)
+		elif e[0] in ["uarm_l", "uarm_r", "farm_l", "farm_r", "hand_l", "hand_r"]:
+			_skin_sprites.append(s)
