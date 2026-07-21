@@ -58,6 +58,48 @@ stagger on top of breathing without them fighting.
 Every critical hit now rolls a random cartoon gag — head spins 2–4 full turns,
 neck stretches like rubber, or a dazed metronome wobble.
 
+## `cc7c6d8` — v0.17: Punch-Out combat loop
+
+`GUARD → WINDUP (tell) → ATTACK → RECOVER`. Dodge in time and he whiffs, which
+*is* the punish window; miss and it costs you health. Timing, not mashing.
+
+- Boss picks jab / hook / uppercut at wind-up so the tell matches the side
+- Dodge on arrows / D-pad: left & right slip, down ducks. **The uppercut
+  punishes ducking**, so direction matters rather than being one panic button
+- Player health bar + "YOU'RE FIRED" game over, restarts the level
+- Difficulty: **BAG** (never attacks) / **DEFENSIVE** (guards, won't swing) /
+  **BRAWLER** (full exchange)
+- Four levels with distinct pace, damage, HP and dialogue; later levels
+  telegraph faster, tightening the dodge window
+
+## v0.18 — self-serve visual verification + layout fixes
+
+Run `Godot --path game -- --shots` and the game dumps a 48-frame filmstrip to
+`user://shots` while a scripted demo punches, dodges and takes hits, then exits
+on its own. Lets the build be checked visually with nobody watching the window.
+
+**Four real bugs it caught immediately** — none of which were visible from
+headless "exit 0":
+
+1. **The boss's feet rendered 65px below the screen.** `offset_top 587 +
+   1240×0.45 = 1145` on a 1080 viewport. He was also too small for a
+   Punch-Out feel. Now 0.55 scale, 682px tall, feet at y≈1010 lining up with
+   the existing shadow.
+2. **"COMBO" ran off the right edge** — at font 96 the word is ~380px wide and
+   was top-left anchored at x=1560. Now right-anchored in a sized, centred box,
+   which also protects it from mobile safe-area insets.
+3. **The player health bar was invisible and collided** with the hint text and
+   punch counter. It was an unstyled `Panel` (renders near-black) pinned
+   bottom-left. Now a third bar under FRENZY/BOSS, styled to match.
+4. **The hint text ran off the left edge** — `grow_horizontal = BOTH` expanded
+   the long string symmetrically around its anchor.
+
+**And the cutout risk I'd flagged turned out to be real:** elbows and wrists
+visibly came apart during big stagger rotations. Re-sliced so each child piece
+extends well past its own joint (children draw on top, so the extra material
+hides the seam instead of doubling). Verified on a cropped joint filmstrip —
+limbs now read as continuous.
+
 ---
 
 ## Decisions made without you (flagged per the brief)

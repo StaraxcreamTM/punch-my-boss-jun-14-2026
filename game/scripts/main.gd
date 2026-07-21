@@ -187,6 +187,7 @@ func _ready() -> void:
 	boss.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
+	_setup_shots()
 
 	_punch_player = AudioStreamPlayer.new()
 	_punch_player.stream = _make_punch()
@@ -291,29 +292,50 @@ func _ready() -> void:
 	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_combo_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_combo_label.z_index = 60
-	_combo_label.position = Vector2(1560, 330)
+	# Sized and centre-aligned inside its own box: at font size 96 the word
+	# "COMBO" is ~380px wide, so anchoring by top-left at x=1560 ran it off the
+	# 1920 edge. Right-anchored so mobile safe-area insets can't clip it either.
+	_combo_label.size = Vector2(420, 230)
+	_combo_label.anchor_left = 1.0
+	_combo_label.anchor_right = 1.0
+	_combo_label.offset_left = -450.0
+	_combo_label.offset_right = -30.0
+	_combo_label.offset_top = 300.0
+	_combo_label.offset_bottom = 530.0
 	_combo_label.rotation = -0.08
 	_combo_label.visible = false
 	safe.add_child(_combo_label)
 
-	# Player health bar, bottom-left, mirroring the boss's bar up top.
+	# Player health bar: third row under FRENZY and BOSS, styled to match them.
+	# (First attempt put it bottom-left, where it collided with the hint text
+	# and the punch counter, and an unstyled Panel rendered near-black.)
+	var track_sb := (ko_fill.get_parent() as Panel).get_theme_stylebox("panel")
+	var fill_sb := StyleBoxFlat.new()
+	fill_sb.bg_color = Color(0.30, 0.72, 1.0)
+	fill_sb.set_corner_radius_all(13)
 	var ptrack := Panel.new()
-	ptrack.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	ptrack.position = Vector2(30, -96)
-	ptrack.size = Vector2(430, 34)
-	ptrack.z_index = 40
+	ptrack.anchor_right = 1.0
+	ptrack.offset_left = 118.0
+	ptrack.offset_top = 106.0
+	ptrack.offset_right = -16.0
+	ptrack.offset_bottom = 140.0
+	ptrack.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	ptrack.add_theme_stylebox_override("panel", track_sb)
 	safe.add_child(ptrack)
 	_player_bar = Panel.new()
 	_player_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_player_bar.modulate = Color(0.30, 0.78, 1.0)
+	_player_bar.anchor_right = 1.0
+	_player_bar.anchor_bottom = 1.0
+	_player_bar.add_theme_stylebox_override("panel", fill_sb)
 	ptrack.add_child(_player_bar)
 	var plabel := Label.new()
 	plabel.text = "YOU"
-	plabel.add_theme_font_size_override("font_size", 26)
+	plabel.add_theme_font_size_override("font_size", 28)
 	plabel.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
-	plabel.add_theme_constant_override("outline_size", 8)
-	plabel.position = Vector2(30, -134)
-	plabel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	plabel.add_theme_constant_override("outline_size", 10)
+	plabel.position = Vector2(16, 106)
+	plabel.size = Vector2(94, 34)
+	plabel.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	safe.add_child(plabel)
 
 	ko_banner.modulate.a = 0.0
@@ -1058,22 +1080,22 @@ const PART_OY := 60.0
 
 # name, bone path under Skeleton, slice-space bbox origin, slice-space pivot, z
 const _PARTS := [
-	["foot_l",  "Hip/ThighL/ShinL/FootL", Vector2(0, 892),   Vector2(106, 905), 0],
-	["foot_r",  "Hip/ThighR/ShinR/FootR", Vector2(199, 892), Vector2(248, 905), 0],
-	["shin_l",  "Hip/ThighL/ShinL",       Vector2(10, 782),  Vector2(112, 790), 1],
-	["shin_r",  "Hip/ThighR/ShinR",       Vector2(199, 782), Vector2(242, 790), 1],
-	["thigh_l", "Hip/ThighL",             Vector2(77, 598),  Vector2(140, 620), 2],
-	["thigh_r", "Hip/ThighR",             Vector2(177, 598), Vector2(212, 620), 2],
-	["hips",    "Hip",                    Vector2(86, 524),  Vector2(176, 560), 3],
+	["foot_l",  "Hip/ThighL/ShinL/FootL", Vector2(0, 866),   Vector2(106, 905), 0],
+	["foot_r",  "Hip/ThighR/ShinR/FootR", Vector2(199, 866), Vector2(248, 905), 0],
+	["shin_l",  "Hip/ThighL/ShinL",       Vector2(3, 752),  Vector2(112, 790), 1],
+	["shin_r",  "Hip/ThighR/ShinR",       Vector2(199, 752), Vector2(242, 790), 1],
+	["thigh_l", "Hip/ThighL",             Vector2(77, 582),  Vector2(140, 620), 2],
+	["thigh_r", "Hip/ThighR",             Vector2(177, 582), Vector2(212, 620), 2],
+	["hips",    "Hip",                    Vector2(84, 505),  Vector2(176, 560), 3],
 	# Pivot must be the bone's own position in slice space - Spine sits at
 	# slice y470, not at the waist, or the torso detaches and the belt doubles.
-	["torso",   "Hip/Spine",              Vector2(51, 296),  Vector2(176, 470), 4],
-	["uarm_l",  "Hip/ArmL",               Vector2(27, 418),  Vector2(108, 405), 5],
+	["torso",   "Hip/Spine",              Vector2(51, 290),  Vector2(176, 470), 4],
+	["uarm_l",  "Hip/ArmL",               Vector2(23, 418),  Vector2(108, 405), 5],
 	["uarm_r",  "Hip/ArmR",               Vector2(248, 418), Vector2(246, 405), 5],
-	["farm_l",  "Hip/ArmL/ForearmL",      Vector2(9, 516),   Vector2(46, 522),  6],
-	["farm_r",  "Hip/ArmR/ForearmR",      Vector2(296, 516), Vector2(306, 522), 6],
-	["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(5, 626),  Vector2(28, 634),  7],
-	["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(285, 626), Vector2(324, 634), 7],
+	["farm_l",  "Hip/ArmL/ForearmL",      Vector2(5, 486),   Vector2(46, 522),  6],
+	["farm_r",  "Hip/ArmR/ForearmR",      Vector2(292, 486), Vector2(306, 522), 6],
+	["hand_l",  "Hip/ArmL/ForearmL/FistL", Vector2(5, 596),  Vector2(28, 634),  7],
+	["hand_r",  "Hip/ArmR/ForearmR/FistR", Vector2(285, 596), Vector2(324, 634), 7],
 ]
 # The head is built separately: its texture is swapped for expressions, so it
 # uses the normalised head canvas (neck anchored at 230,470) rather than a
@@ -1202,3 +1224,76 @@ func _wav(data: PackedByteArray, rate: int) -> AudioStreamWAV:
 	wav.stereo = false
 	wav.data = data
 	return wav
+
+# --- debug: self-serve visual verification ----------------------------------
+# Run with:  Godot --path game -- --shots
+# Dumps a filmstrip of viewport PNGs to user://shots and drives a scripted
+# demo (punches, dodges, criticals) so the frames capture the game in motion
+# rather than a static idle pose. Lets the build be checked visually without a
+# human watching the window. Exits on its own when the strip is complete.
+const SHOT_COUNT := 48
+const SHOT_INTERVAL := 0.30
+
+var _shot_mode: bool = false
+var _shot_i: int = 0
+var _demo_step: int = 0
+
+func _setup_shots() -> void:
+	if not ("--shots" in OS.get_cmdline_user_args()):
+		return
+	_shot_mode = true
+	var dir := "user://shots"
+	DirAccess.make_dir_recursive_absolute(dir)
+	# Clear any previous strip so old frames can't be mistaken for new ones.
+	var d := DirAccess.open(dir)
+	if d != null:
+		d.list_dir_begin()
+		var f := d.get_next()
+		while f != "":
+			if f.ends_with(".png"):
+				d.remove(f)
+			f = d.get_next()
+		d.list_dir_end()
+	print("[shots] writing to ", ProjectSettings.globalize_path(dir))
+	var t := Timer.new()
+	t.wait_time = SHOT_INTERVAL
+	t.autostart = true
+	t.timeout.connect(_take_shot)
+	add_child(t)
+	var dm := Timer.new()
+	dm.wait_time = 0.60
+	dm.autostart = true
+	dm.timeout.connect(_demo_tick)
+	add_child(dm)
+
+func _take_shot() -> void:
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png("user://shots/shot_%03d.png" % _shot_i)
+	_shot_i += 1
+	if _shot_i >= SHOT_COUNT:
+		print("[shots] done: %d frames" % _shot_i)
+		get_tree().quit()
+
+# Scripted play so the filmstrip exercises real states: body and head punches,
+# dodges in each direction, and a spell of doing nothing so the boss's own
+# attack cycle and idle life get captured too.
+func _demo_tick() -> void:
+	if _koing:
+		return
+	_demo_step += 1
+	match _demo_step % 8:
+		1, 2:
+			_punch(_demo_step % 2 == 0, true)    # head
+		3:
+			_punch(true, false)                  # body
+		4:
+			_dodge(-1)
+		5:
+			_punch(false, false)
+		6:
+			_dodge(1)
+		7:
+			_dodge(0)
+		_:
+			pass
