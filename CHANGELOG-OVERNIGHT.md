@@ -198,6 +198,39 @@ listing, pricing, and a suggested order.
   weighted patterns, and treat on-device LLM as post-launch — a 1–2GB model is
   an install-conversion problem at a $2 price point.
 
+## `a25af82` — v0.23: gimmick level framework + 2 gimmick levels
+
+Levels plug in a mechanic **by name**. A gimmick replaces player input and boss
+behaviour while reusing the same rig, damage funnel, scoring and reactions —
+adding one is a couple of functions plus a `LEVELS` entry, and it doesn't touch
+the fight code. That's the framework your level list needs.
+
+- **Level 5 "Team Building" (throw)** — grab and fling him round the room.
+  Gravity, damped bounces off floor/ceiling/walls, impact damage scaled by
+  speed, and he spins with his own horizontal velocity.
+- **Level 6 "Open Plan" (objects)** — hurl a stapler / mug / keyboard / potted
+  plant. Arcs in from off-screen, detonates on arrival, checks head vs body,
+  and routes through the same reaction code as a punch.
+
+**Two bugs the filmstrip caught:** the throw had **no ceiling**, so he sailed
+out of the top of the frame and vanished for seconds (5 of 12 sampled frames
+had no boss on screen — now 42/42 keep him visible); and the objects level
+scored zero with nothing visible because the prop PNGs **were never imported**,
+so `ResourceLoader.exists()` was false and the throw bailed silently.
+
+## v0.24 — audio polish + more Looney Tunes gags
+
+- **Rising combo pitch** — punch pitch climbs with the combo and caps so it
+  never squeaks. The classic arcade "you're on a run" cue.
+- **Proper K.O. sting** — low impact boom with a noise transient under a rising
+  five-note fanfare with vibrato and a ringing final note. (Was three plain
+  sine notes.)
+- **Six new reactions**: `spin_body`, `flatten`, `stretch_up`, `rubber_neck`
+  (multi-hit head whip), `jelly_legs`, `shock_hop`.
+- The reaction roll went from **3 head gags → 6**, and body criticals from one
+  fixed response → **4**. Light head hits now sometimes rubber-neck too, so
+  even chip damage varies.
+
 ---
 
 ## Decisions made without you (flagged per the brief)

@@ -463,3 +463,84 @@ func laugh() -> void:
 
 func point_at_player() -> void:
 	pose({"uarmR": -1.5, "farmR": 0.5, "chest": -0.1, "head": 0.05}, 0.2, 0.7, 0.35)
+
+
+# --- extra Looney Tunes reactions -------------------------------------------
+# More gags for the reaction roll. Each is layered on the same additive offsets
+# as everything else, so they stack with breathing and with each other.
+
+# The whole body spins like a top, then wobbles to a stop.
+func spin_body(times: int = 2, dur: float = 0.7) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_rot", TAU * float(times), dur) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func() -> void: body_rot = 0.0)
+	tw.tween_property(self, "body_rot", 0.0, 0.4).from(0.35) \
+		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+# Squashed flat like an anvil landed on him, then pops back up.
+func flatten(power: float = 1.0) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_scale", Vector2(0.45 * power, -0.55 * power), 0.07) \
+		.set_trans(Tween.TRANS_QUAD)
+	tw.tween_interval(0.16)
+	tw.tween_property(self, "body_scale", Vector2(-0.18, 0.26), 0.14).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.30).set_trans(Tween.TRANS_ELASTIC)
+	pose({"thighL": 0.5, "thighR": -0.5, "shinL": -0.7, "shinR": 0.7,
+		"uarmL": 0.9, "uarmR": -0.9, "head": 0.2}, 0.07, 0.16, 0.34)
+
+# Stretches tall like a startled cat, then drops.
+func stretch_up(power: float = 1.0) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_scale", Vector2(-0.22 * power, 0.42 * power), 0.09) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.34).set_trans(Tween.TRANS_BOUNCE)
+	var tp := create_tween()
+	tp.tween_property(self, "body_pos", Vector2(0.0, -70.0 * power), 0.09)
+	tp.tween_property(self, "body_pos", Vector2.ZERO, 0.30).set_trans(Tween.TRANS_BOUNCE)
+
+# Head whips side to side several times - the multi-hit rubber neck.
+func rubber_neck(hits: int = 4) -> void:
+	var key := "head"
+	if not _rot.has(key):
+		return
+	var tw := create_tween()
+	for i in hits:
+		var mag := (1.0 - float(i) / float(hits + 1)) * 0.85
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		tw.tween_method(func(v: float) -> void: _rot[key] = v,
+			_rot[key], mag * dir, 0.06).set_trans(Tween.TRANS_QUAD)
+	tw.tween_method(func(v: float) -> void: _rot[key] = v, _rot[key], 0.0, 0.4) \
+		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	if head_spr != null:
+		var ts := create_tween()
+		ts.tween_property(head_spr, "scale", head_spr.scale * Vector2(1.18, 0.88), 0.07)
+		ts.tween_property(head_spr, "scale", head_spr.scale, 0.38).set_trans(Tween.TRANS_ELASTIC)
+
+# Knees knock together and the whole figure jellies.
+func jelly_legs(dur: float = 1.0) -> void:
+	var tw := create_tween()
+	var steps := 5
+	for i in steps:
+		var mag := (1.0 - float(i) / float(steps)) * 0.34
+		var dir := 1.0 if i % 2 == 0 else -1.0
+		tw.tween_method(func(v: float) -> void:
+			_rot["thighL"] = v
+			_rot["thighR"] = v
+			_rot["shinL"] = -v * 1.4
+			_rot["shinR"] = -v * 1.4, _rot["thighL"], mag * dir, dur / float(steps)) \
+			.set_trans(Tween.TRANS_SINE)
+	tw.tween_method(func(v: float) -> void:
+		_rot["thighL"] = v
+		_rot["thighR"] = v
+		_rot["shinL"] = -v
+		_rot["shinR"] = -v, _rot["thighL"], 0.0, 0.3)
+
+# Jumps clean off the floor in shock.
+func shock_hop(power: float = 1.0) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_pos", Vector2(0.0, -150.0 * power), 0.13) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "body_pos", Vector2.ZERO, 0.26).set_trans(Tween.TRANS_BOUNCE)
+	pose({"uarmL": 1.3, "uarmR": -1.3, "farmL": 0.6, "farmR": -0.6,
+		"thighL": -0.3, "thighR": 0.3, "head": -0.15}, 0.12, 0.10, 0.32)

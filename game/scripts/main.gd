@@ -689,23 +689,43 @@ func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
 	rig_anim.squash(1.0 if crit else 0.55)
 	if is_head:
 		if crit:
-			match randi() % 3:
+			# Big head hits roll one of the cartoon gags.
+			match randi() % 6:
 				0:
 					rig_anim.head_spin(randi_range(2, 4))
 				1:
 					rig_anim.neck_stretch(side_left, 1.0)
-				_:
+				2:
 					rig_anim.wobble_stun(1.3)
+				3:
+					rig_anim.rubber_neck(randi_range(3, 5))
+				4:
+					rig_anim.spin_body(randi_range(1, 2))
+				_:
+					rig_anim.stretch_up(1.0)
 		else:
-			rig_anim.stagger(side_left, 0.7)
+			if randf() < 0.25:
+				rig_anim.rubber_neck(2)
+			else:
+				rig_anim.stagger(side_left, 0.7)
 	else:
 		rig_anim.stagger(side_left, 1.0 if crit else 0.55)
 		if crit:
-			rig_anim.knees_buckle(0.9)
+			match randi() % 4:
+				0:
+					rig_anim.flatten(1.0)
+				1:
+					rig_anim.jelly_legs(0.9)
+				2:
+					rig_anim.shock_hop(1.0)
+				_:
+					rig_anim.knees_buckle(0.9)
 
 func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	# A normal punch while the boss is guarding: small damage, standard juice.
-	_punch_player.pitch_scale = randf_range(0.9, 1.15)
+	# Pitch climbs with the combo - the classic arcade cue that a run is
+	# building. Capped so it never turns into a squeak.
+	_punch_player.pitch_scale = clampf(0.92 + float(combo) * 0.045, 0.9, 1.9) 		* randf_range(0.97, 1.04)
 	_punch_player.play()
 	_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.28
@@ -720,7 +740,7 @@ func _chip(impact: Vector2, text_pos: Vector2) -> void:
 func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	# A punch landed in the vulnerable window: big damage + maxed-out juice.
 	_crit_player.play()
-	_punch_player.pitch_scale = randf_range(1.2, 1.4)
+	_punch_player.pitch_scale = clampf(1.15 + float(combo) * 0.05, 1.1, 2.1) 		* randf_range(0.97, 1.04)
 	_punch_player.play()
 	_react_tex = _react[_react.size() - 1 - (randi() % 3)]
 	_react_time = 0.5
@@ -1294,19 +1314,38 @@ func _make_punch() -> AudioStreamWAV:
 	return _wav(data, rate)
 
 func _make_ko() -> AudioStreamWAV:
+	# K.O. sting: a low impact boom under a rising five-note fanfare, with a
+	# little vibrato and a noise transient so it lands like a hit rather than a
+	# menu beep. (The old version was three plain sine notes.)
 	var rate := 44100
-	var dur := 0.5
+	var dur := 1.15
 	var n := int(rate * dur)
 	var data := PackedByteArray()
 	data.resize(n * 2)
-	var notes := [523.25, 659.25, 783.99]
-	var seg_len := dur / float(notes.size())
+	var notes := [523.25, 659.25, 783.99, 1046.5, 1318.5]   # C5 E5 G5 C6 E6
+	var seg_len := 0.16
 	for i in n:
 		var t := float(i) / rate
-		var seg := clampi(int(t / seg_len), 0, notes.size() - 1)
-		var lt := t - float(seg) * seg_len
-		var env := exp(-lt * 8.0)
-		var s := sin(TAU * float(notes[seg]) * t) * env * 0.6
+		var s := 0.0
+		# Impact boom: fast pitch drop plus a noise burst.
+		if t < 0.30:
+			var benv := exp(-t * 11.0)
+			s += sin(TAU * lerpf(150.0, 42.0, t / 0.30) * t) * benv * 0.75
+			s += (randf() * 2.0 - 1.0) * exp(-t * 34.0) * 0.30
+		# Fanfare over the top.
+		var seg := int(t / seg_len)
+		if seg < notes.size():
+			var lt := t - float(seg) * seg_len
+			var env := exp(-lt * 5.5)
+			var f: float = notes[seg] * (1.0 + sin(TAU * 5.5 * t) * 0.006)
+			s += sin(TAU * f * t) * env * 0.34
+			s += sin(TAU * f * 2.0 * t) * env * 0.12
+		# Final note rings on.
+		if t > float(notes.size()) * seg_len:
+			var rt := t - float(notes.size()) * seg_len
+			var renv := exp(-rt * 3.4)
+			s += sin(TAU * 1318.5 * (1.0 + sin(TAU * 5.0 * t) * 0.008) * t) * renv * 0.30
+			s += sin(TAU * 659.25 * t) * renv * 0.14
 		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
 	return _wav(data, rate)
 
@@ -1391,6 +1430,10 @@ func _setup_shots() -> void:
 	add_child(dm)
 
 func _take_shot() -> void:
+	# Guard: the timer can fire again during the await below, which produced a
+	# stray extra frame and a duplicate "done" line.
+	if _shot_i >= SHOT_COUNT:
+		return
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	img.save_png("user://shots/shot_%03d.png" % _shot_i)
