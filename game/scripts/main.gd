@@ -552,6 +552,7 @@ func _process(delta: float) -> void:
 	if rig_anim != null:
 		rig_anim.update(delta)
 
+	_update_pose(delta)
 	if _punch_cd > 0.0:
 		_punch_cd -= delta
 	# Roll the score readout up toward the real value rather than snapping.
@@ -821,6 +822,8 @@ func _hit_banter() -> void:
 # Tunes gag — the head spinning right around, the neck stretching like rubber,
 # or a dazed metronome wobble.
 func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
+	# A drawn pose can't flinch - drop back to the rig for the reaction.
+	set_pose("")
 	if rig_anim == null:
 		return
 	rig_anim.squash(1.0 if crit else 0.55)
@@ -1014,7 +1017,9 @@ func _enter_guard() -> void:
 	_state_time = randf_range(2.6, 4.2) * _level_cfg().get("pace", 1.0)
 	_prompt.visible = false
 	boss.modulate = Color(1, 1, 1)
-	if rig_anim != null and difficulty != Difficulty.BAG:
+	if has_pose("guard"):
+		set_pose("guard")
+	elif rig_anim != null and difficulty != Difficulty.BAG:
 		rig_anim.block()
 
 func _enter_windup() -> void:
@@ -1031,6 +1036,8 @@ func _enter_windup() -> void:
 	_is_feint = level >= 2 and randf() < 0.18
 	_atk_resolved = false
 	_atk_whiffed = false
+	# The tell and the swing need articulated arms.
+	set_pose("palm" if (_is_feint and has_pose("palm")) else "")
 	if rig_anim != null:
 		rig_anim.unblock()
 		if _is_feint:
@@ -1039,6 +1046,7 @@ func _enter_windup() -> void:
 			rig_anim.tell(_atk_side, _windup_dur())
 
 func _enter_attack() -> void:
+	set_pose("")
 	_state = BossState.ATTACK
 	_state_time = ATTACK_DUR
 	if rig_anim != null:
@@ -1095,6 +1103,7 @@ func _hit_player() -> void:
 		_game_over()
 
 func _enter_vulnerable() -> void:
+	set_pose("")
 	_state = BossState.VULNERABLE
 	_state_time = VULN_DUR
 	_prompt.visible = true
@@ -1947,9 +1956,12 @@ func _start_fight() -> void:
 	t.tween_interval(0.5)
 	t.tween_property(ko_banner, "modulate:a", 0.0, 0.35)
 	if _gimmick() in ["throw", "objects", "bridge", "car", "moon"]:
+		set_pose("")
 		_prompt.visible = false
 		_say(String(_level_cfg().get("line", "")))
 	else:
+		if has_pose("walk"):
+			play_entrance()
 		_enter_guard()
 
 func _show_gameover(won: bool) -> void:
@@ -2139,6 +2151,7 @@ func _apply_level_scene() -> void:
 		office.material = _office_mat
 
 func _start_gimmick() -> void:
+	set_pose("")
 	_apply_level_scene()
 	_boss_at = Vector2.ZERO
 	_boss_vel = Vector2.ZERO
@@ -2657,3 +2670,86 @@ func _build_parts_from(cfg: Dictionary, mat: Material) -> void:
 			_skin_sprites.append(s)
 		elif e[0] in ["uarm_l", "uarm_r", "farm_l", "farm_r", "hand_l", "hand_r"]:
 			_skin_sprites.append(s)
+
+# --- full-body pose frames --------------------------------------------------
+# Hybrid rig: the cutout skeleton stays the base (it carries idle life,
+# reactions and attacks), and hand-drawn full-body poses take over for discrete
+# HELD moments where a drawn pose reads better than a procedural one — the
+# guard stance, a "stop" gesture, the walk-in.
+#
+# The pose sprite is a child of `rig`, so screen shake, hitstop, the wind-up
+# lean and the K.O. tumble all still apply to it. Breathing is layered on top
+# so a held pose never looks frozen.
+var _pose_spr: Sprite2D
+var _pose_name: String = ""
+var _pose_t: float = 0.0
+
+func _pose_dir() -> String:
+	return "res://assets/%s/poses" % ("boss3" if character == "big" else "boss2")
+
+func has_pose(name: String) -> bool:
+	return ResourceLoader.exists("%s/%s.png" % [_pose_dir(), name])
+
+func set_pose(name: String) -> void:
+	if name == _pose_name:
+		return
+	if name != "" and not has_pose(name):
+		return                      # character has no art for this pose
+	_pose_name = name
+	if name == "":
+		if _pose_spr != null:
+			_pose_spr.visible = false
+		_set_rig_visible(true)
+		return
+	if _pose_spr == null:
+		_pose_spr = Sprite2D.new()
+		_pose_spr.centered = false
+		_pose_spr.z_index = 20
+		_pose_spr.material = _outline_mat
+		rig.add_child(_pose_spr)
+	var tex: Texture2D = load("%s/%s.png" % [_pose_dir(), name])
+	_pose_spr.texture = tex
+	# Every pose is drawn at the same figure scale, so one scale keeps him
+	# consistent; bottom-centre alignment puts his feet on the same floor line
+	# whatever the pose's bounding box does (the raised arm in "palm" makes that
+	# box taller without making him taller).
+	var sc := float(CHARS[character].get("scale", 1.0))
+	_pose_spr.scale = Vector2(sc, sc)
+	var w := tex.get_width() * sc
+	var h := tex.get_height() * sc
+	_pose_spr.position = Vector2(260.0 - w * 0.5, 1240.0 - h)
+	_pose_spr.visible = true
+	_pose_t = 0.0
+	_set_rig_visible(false)
+
+func _set_rig_visible(v: bool) -> void:
+	for s in _char_sprites:
+		if s != null and is_instance_valid(s):
+			s.visible = v
+	if _hair_spr != null and is_instance_valid(_hair_spr):
+		_hair_spr.visible = v and is_customisable() and look_hair != 0
+	if _moustache_spr != null and is_instance_valid(_moustache_spr):
+		_moustache_spr.visible = v and is_customisable() and look_moustache != 0
+
+# Keep a held pose breathing so it doesn't read as a freeze-frame.
+func _update_pose(delta: float) -> void:
+	if _pose_spr == null or not _pose_spr.visible:
+		return
+	_pose_t += delta
+	var sc := float(CHARS[character].get("scale", 1.0))
+	var breath := sin(_pose_t * 1.9) * 0.006
+	var sway := sin(_pose_t * 0.72) * 0.004
+	_pose_spr.scale = Vector2(sc * (1.0 + sway), sc * (1.0 + breath))
+
+# Walk him in at the start of a fight, then hand back to the rig.
+func play_entrance() -> void:
+	if not has_pose("walk"):
+		return
+	set_pose("walk")
+	var from := Vector2(760.0, 0.0)
+	rig.position = from
+	var tw := create_tween()
+	tw.tween_property(rig, "position", Vector2.ZERO, 1.15) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await tw.finished
+	set_pose("guard" if has_pose("guard") else "")
