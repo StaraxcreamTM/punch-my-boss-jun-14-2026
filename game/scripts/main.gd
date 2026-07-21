@@ -109,6 +109,13 @@ var _hud_nodes: Array = []      # fight HUD, hidden on menu screens
 # --- arcade scoring --------------------------------------------------------
 var score: int = 0
 var best_score: int = 0
+# Lifetime stats. Cheap to keep and they feed the stress-relief fantasy
+# directly - "you have thrown 4,812 punches at this man" is the payoff.
+var stat_punches: int = 0
+var stat_damage: int = 0
+var stat_kos: int = 0
+var stat_fired: int = 0
+var stat_best_combo: int = 0
 var _score_shown: float = 0.0     # eased toward `score` so the readout rolls up
 # Gate on how fast punches can be thrown. Without it, mashing (or an
 # autoclicker) farmed unlimited combo and made the guard/tell/dodge loop
@@ -140,6 +147,16 @@ var _ko_player: AudioStreamPlayer
 var _music_player: AudioStreamPlayer
 var _music_btn: Button
 var music_on: bool = true
+# Haptics. MAKE-IT-SELLABLE calls this the single biggest feel gap on mobile:
+# on a phone the buzz is half of what sells a punch. No-op on desktop, so it
+# costs nothing to leave on.
+var haptics_on: bool = true
+
+func _buzz(ms: int) -> void:
+	if not haptics_on:
+		return
+	if OS.get_name() in ["Android", "iOS"]:
+		Input.vibrate_handheld(ms)
 
 # --- juice / game-feel ---
 var _shake_time: float = 0.0
@@ -233,6 +250,38 @@ const LEVEL_ATTACKS := {
 	3: [0, 1, 2, 4, 6],
 	4: [1, 2, 3, 4, 5, 6],
 }
+
+# Opponent roster. A boss is a name + a look + a timing profile - the cutout
+# rig and the look layers mean this is content, not engineering. Levels without
+# a "look" use YOUR boss, i.e. whatever the player customised, so the
+# customisation stays meaningful instead of being overwritten.
+const ROSTER := {
+	2: {"who": "Deborah, Regional", "skin": 1, "hair": 2, "moustache": 0},
+	3: {"who": "Alan from Finance", "skin": 3, "hair": 1, "moustache": 1},
+	5: {"who": "The Facilitator", "skin": 2, "hair": 3, "moustache": 2},
+	6: {"who": "Priya, Head of Pods", "skin": 4, "hair": 2, "moustache": 0},
+	7: {"who": "Gareth, Offsite Lead", "skin": 1, "hair": 1, "moustache": 2},
+	8: {"who": "The Fleet Manager", "skin": 5, "hair": 3, "moustache": 1},
+	9: {"who": "Chief Vision Officer", "skin": 2, "hair": 2, "moustache": 2},
+}
+
+# Swap in this level's opponent. Levels absent from ROSTER restore the player's
+# own saved look - those are the fights against YOUR boss.
+func _apply_opponent() -> void:
+	var r: Dictionary = ROSTER.get(level, {})
+	if r.is_empty():
+		look_skin = _own_skin
+		look_hair = _own_hair
+		look_moustache = _own_moustache
+	else:
+		look_skin = int(r.get("skin", 0))
+		look_hair = int(r.get("hair", 0))
+		look_moustache = int(r.get("moustache", 0))
+	_apply_look_no_save()
+
+func opponent_name() -> String:
+	var r: Dictionary = ROSTER.get(level, {})
+	return String(r.get("who", "Your Boss"))
 
 func _attack_set() -> Array:
 	return LEVEL_ATTACKS.get(level, [0, 1, 2])
@@ -648,6 +697,7 @@ func _punch_click(pos: Vector2) -> void:
 		_throw_whiff(pos, side_left)
 		return
 	punches += 1
+	stat_punches += 1
 	_throw_fist(pos, side_left, head_rect.has_point(pos))
 
 func _throw_whiff(pos: Vector2, side_left: bool) -> void:
@@ -691,6 +741,7 @@ func _punch(side_left: bool, is_head: bool) -> void:
 		return
 	_punch_cd = PUNCH_COOLDOWN
 	punches += 1
+	stat_punches += 1
 	# Aim at the head or the torso cutout, biased to the struck side.
 	var r := _part_global_rect(head if is_head else torso_spr)
 	var fx := 0.30 if side_left else 0.70
@@ -807,6 +858,7 @@ func _chip(impact: Vector2, text_pos: Vector2) -> void:
 	_spawn_text(text_pos, POW_WORDS[randi() % POW_WORDS.size()], 84, Color(1, 0.86, 0.16))
 	_spawn_stars(impact, 5)
 	_hitstop(0.05)
+	_buzz(18)
 	_apply_damage(impact, float(randi_range(3, 6)), false)
 
 func _crit(impact: Vector2, text_pos: Vector2) -> void:
@@ -824,6 +876,7 @@ func _crit(impact: Vector2, text_pos: Vector2) -> void:
 	_spawn_stars(impact, 14)
 	_spawn_sweat(impact)
 	_hitstop(0.11)
+	_buzz(45)
 	_apply_damage(impact, float(randi_range(9, 14)), true)
 	# The opening is spent — the boss recovers to guard.
 	if _state == BossState.VULNERABLE:
@@ -846,6 +899,8 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 	var combo_mul := 1.0 + minf(float(combo) * 0.14, 3.0)
 	var dmg := maxf(1.0, roundf(base * combo_mul * (1.35 if frenzy > 0.0 else 1.0)))
 	_set_hp(hp - dmg)
+	stat_damage += int(dmg)
+	stat_best_combo = maxi(stat_best_combo, combo)
 	_spawn_text(impact + Vector2(randf_range(-20.0, 20.0), -50.0), str(int(dmg)),
 		64 if crit else 44, Color(1, 0.32, 0.21) if crit else Color(1, 1, 1))
 	# Score: damage scaled by the multiplier, bonus for criticals and frenzy.
@@ -1014,6 +1069,7 @@ func _resolve_attack() -> void:
 		_hit_player()
 
 func _hit_player() -> void:
+	_buzz(80)
 	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0))
 	_flash_screen(0.42)
 	_shake(30.0, 0.4)
@@ -1054,6 +1110,7 @@ func _game_over() -> void:
 	if _koing:
 		return
 	_koing = true
+	stat_fired += 1
 	best_score = maxi(best_score, score)
 	_save_prefs()
 	_say(_line("down", Dia.PLAYER_DOWN))
@@ -1166,6 +1223,8 @@ func _knockout() -> void:
 	# Hand the body transform back to the rig now the cutscene is done.
 	if rig_anim != null:
 		rig_anim.own_body = true
+	stat_kos += 1
+	_save_prefs()
 	_koing = false
 	if _shot_mode:
 		# Keep the filmstrip demo fighting instead of parking on a screen.
@@ -1690,21 +1749,36 @@ func _load_prefs() -> void:
 	if cfg.load(SAVE_PATH) != OK:
 		return
 	best_score = int(cfg.get_value("score", "best", 0))
+	stat_punches = int(cfg.get_value("stats", "punches", 0))
+	stat_damage = int(cfg.get_value("stats", "damage", 0))
+	stat_kos = int(cfg.get_value("stats", "kos", 0))
+	stat_fired = int(cfg.get_value("stats", "fired", 0))
+	stat_best_combo = int(cfg.get_value("stats", "best_combo", 0))
+	haptics_on = bool(cfg.get_value("settings", "haptics", true))
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
 	look_skin = int(cfg.get_value("look", "skin", 0))
 	look_hair = int(cfg.get_value("look", "hair", 0))
 	look_moustache = int(cfg.get_value("look", "moustache", 0))
+	_own_skin = look_skin
+	_own_hair = look_hair
+	_own_moustache = look_moustache
 	portrait = bool(cfg.get_value("settings", "portrait", false))
 
 func _save_prefs() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("score", "best", best_score)
+	cfg.set_value("stats", "punches", stat_punches)
+	cfg.set_value("stats", "damage", stat_damage)
+	cfg.set_value("stats", "kos", stat_kos)
+	cfg.set_value("stats", "fired", stat_fired)
+	cfg.set_value("stats", "best_combo", stat_best_combo)
+	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
-	cfg.set_value("look", "skin", look_skin)
-	cfg.set_value("look", "hair", look_hair)
-	cfg.set_value("look", "moustache", look_moustache)
+	cfg.set_value("look", "skin", _own_skin)
+	cfg.set_value("look", "hair", _own_hair)
+	cfg.set_value("look", "moustache", _own_moustache)
 	cfg.set_value("settings", "portrait", portrait)
 	cfg.save(SAVE_PATH)
 
@@ -1771,6 +1845,10 @@ func _show_title() -> void:
 	_screen_title.offset_top = 140.0
 	_screen_title.offset_bottom = 420.0
 	_screen_sub.text = "BEST  %d" % best_score
+	if stat_punches > 0 or stat_damage > 0:
+		_screen_sub.text += "
+%d punches thrown   ·   %d damage   ·   %d K.O.s" % [
+			stat_punches, stat_damage, stat_kos]
 	_screen_hint.text = "%s\n\n1 / 2 / 3 pick difficulty  ·  tap or press any key to start" % _difficulty_name()
 	if rig_anim != null:
 		rig_anim.taunt()
@@ -1799,10 +1877,12 @@ func _start_prefight() -> void:
 	_screen.visible = true
 	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.45)
 	var cfg := _level_cfg()
+	_apply_opponent()
 	_screen_title.text = "LEVEL %d" % level
 	_screen_title.offset_top = 150.0
 	_screen_title.offset_bottom = 300.0
-	_screen_sub.text = String(cfg.get("name", ""))
+	_screen_sub.text = "%s
+%s" % [String(cfg.get("name", "")), opponent_name()]
 	_screen_hint.text = "tap to begin"
 	var pre: Array = Dia.PREFIGHT.get(level, [])
 	if pre.is_empty():
@@ -1911,7 +1991,20 @@ func _build_look_layers(mat: Material) -> void:
 	_hair_spr.visible = false
 	_moustache_spr.visible = false
 
+# The player's own saved look, kept separate from whatever opponent is on
+# screen so a roster fight never overwrites their customisation.
+var _own_skin: int = 0
+var _own_hair: int = 0
+var _own_moustache: int = 0
+
 func apply_look() -> void:
+	_own_skin = look_skin
+	_own_hair = look_hair
+	_own_moustache = look_moustache
+	_apply_look_no_save()
+	_save_prefs()
+
+func _apply_look_no_save() -> void:
 	# Skin: only the pieces that actually show skin get the recolour path
 	# switched on, so the shirt and trousers can never be caught by it.
 	var tone: Color = SKIN_TONES[posmod(look_skin, SKIN_TONES.size())]
@@ -1926,7 +2019,6 @@ func apply_look() -> void:
 		m.set_shader_parameter("skin_target", Vector3(tone.r, tone.g, tone.b))
 	_set_accessory(_hair_spr, HAIR_OPTS[posmod(look_hair, HAIR_OPTS.size())])
 	_set_accessory(_moustache_spr, MOUSTACHE_OPTS[posmod(look_moustache, MOUSTACHE_OPTS.size())])
-	_save_prefs()
 
 func _set_accessory(spr: Sprite2D, name: String) -> void:
 	if spr == null:
