@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://q4nmvnygf6i3"
-path="res://.godot/imported/sky.png-20e957bf380ab90770a95820f61ddcef.ctex"
+uid="uid://dt60uugbwsami"
+path="res://.godot/imported/sky.png-0e8476a53440bf322ebd0e1c7b4e3c43.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/boss2/scenes/sky.png"
-dest_files=["res://.godot/imported/sky.png-20e957bf380ab90770a95820f61ddcef.ctex"]
+source_file="res://assets/scenes/sky.png"
+dest_files=["res://.godot/imported/sky.png-0e8476a53440bf322ebd0e1c7b4e3c43.ctex"]
 
 [params]
 

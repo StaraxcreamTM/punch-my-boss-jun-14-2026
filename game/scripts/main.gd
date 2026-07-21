@@ -217,6 +217,7 @@ const LEVELS := [
 	{"name": "Company Car", "hp": 280.0, "pace": 1.2, "dmg": 0.0, "gimmick": "car",
 	 "line": "I got the company car. You got the company newsletter."},
 	{"name": "Moonshot", "hp": 320.0, "pace": 1.2, "dmg": 0.0, "gimmick": "moon",
+	 "bg": "res://assets/scenes/sky.png", "bg_toon": false,
 	 "line": "They said reach for the stars. I meant it as a metaphor. STOP—"},
 ]
 
@@ -323,7 +324,7 @@ func _ready() -> void:
 
 	# Music toggle, top-right. Also on the M key.
 	_music_btn = Button.new()
-	_music_btn.text = "MUSIC" if music_on else "MUTED"
+	_music_btn.text = "|| PAUSE"
 	_music_btn.focus_mode = Control.FOCUS_NONE
 	_music_btn.add_theme_font_size_override("font_size", 22)
 	_music_btn.anchor_left = 1.0
@@ -335,7 +336,7 @@ func _ready() -> void:
 	_music_btn.offset_top = 350.0
 	_music_btn.offset_bottom = 398.0
 	_music_btn.z_index = 60
-	_music_btn.pressed.connect(toggle_music)
+	_music_btn.pressed.connect(_on_pause)
 	safe.add_child(_music_btn)
 
 	# Overscan bg + tint so screen-shake never reveals a screen edge.
@@ -493,7 +494,7 @@ func _ready() -> void:
 	_say(String(_level_cfg().get("line", OPENERS[randi() % OPENERS.size()])))
 	_hud_nodes = [
 		$Safe/RageLabel, $Safe/RageTrack, $Safe/KoLabel, $Safe/KoTrack,
-		$Safe/Hint, counter, ptrack, plabel, _combo_label,
+		$Safe/Hint, counter, ptrack, plabel, _combo_label, _music_btn,
 	]
 	for b in _buttons.values():
 		_hud_nodes.append(b)
@@ -1671,6 +1672,11 @@ func _demo_tick() -> void:
 		_demo_tour()
 		return
 	_demo_step += 1
+	# Exercise PAUSE once mid-fight so the filmstrip proves it returns to the
+	# menu, rather than trusting the signal connection.
+	if _demo_step == 16 and phase == Phase.FIGHT:
+		_on_pause()
+		return
 	# Gimmick levels need their own scripted play.
 	match _gimmick():
 		"throw":
@@ -1797,6 +1803,14 @@ func _kick_music() -> void:
 	if music_on:
 		_music_player.play()
 
+# Leave a fight and go back to the menu. Progress in the fight is abandoned;
+# the level itself stays unlocked.
+func _on_pause() -> void:
+	if phase != Phase.FIGHT:
+		return
+	set_pose("")
+	open_menu(Phase.MENU)
+
 func toggle_music() -> void:
 	_music_started = true
 	music_on = not music_on
@@ -1805,9 +1819,6 @@ func toggle_music() -> void:
 			_music_player.play()
 		else:
 			_music_player.stop()
-	if _music_btn != null:
-		_music_btn.text = "MUSIC" if music_on else "MUTED"
-		_music_btn.modulate = Color(1, 1, 1) if music_on else Color(0.6, 0.6, 0.66)
 	_save_prefs()
 
 # --- save data --------------------------------------------------------------
@@ -2169,21 +2180,42 @@ func _gimmick_uses_rig_body() -> bool:
 # the launch reads as "he jumped" rather than "he left the building".
 var _office_tex: Texture2D
 var _office_mat: Material
+var _office_fit: int = 0
 
+# Per-level backdrop, driven entirely by the LEVELS entry.
+#
+# Dropping in new scene art is CONTENT, not code: put the image under
+# assets/scenes/ and add "bg" to the level. Two optional keys go with it:
+#
+#   "bg"      path to the image. Omit for the default office.
+#   "bg_toon" run the posterise/ink shader over it. Defaults to TRUE for the
+#             photographic office and FALSE for flat/painted art, because that
+#             pass is tuned for photos and muddies flat colour.
+#   "bg_fit"  stretch mode override, if a piece of art needs a different fit.
+#
+# A missing file falls back to the office with a warning rather than showing a
+# blank screen, so a typo in a path can never black out the level.
 func _apply_level_scene() -> void:
 	if _office_tex == null:
 		_office_tex = office.texture
 		_office_mat = office.material
-	if _gimmick() == "moon":
-		var sky := "res://assets/boss2/scenes/sky.png"
-		if ResourceLoader.exists(sky):
-			office.texture = load(sky)
-			# The toon posterise/ink pass is tuned for the photo background and
-			# muddies flat art, so drop it for the painted sky.
-			office.material = null
-	else:
+		_office_fit = office.stretch_mode
+	var cfg := _level_cfg()
+	var path := String(cfg.get("bg", ""))
+	if path == "":
 		office.texture = _office_tex
 		office.material = _office_mat
+		office.stretch_mode = _office_fit
+		return
+	if not ResourceLoader.exists(path):
+		push_warning("level %d: background not found, using the office: %s" % [level, path])
+		office.texture = _office_tex
+		office.material = _office_mat
+		office.stretch_mode = _office_fit
+		return
+	office.texture = load(path)
+	office.material = _office_mat if bool(cfg.get("bg_toon", false)) else null
+	office.stretch_mode = int(cfg.get("bg_fit", _office_fit))
 
 func _start_gimmick() -> void:
 	set_pose("")
