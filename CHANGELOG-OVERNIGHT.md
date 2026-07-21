@@ -100,6 +100,37 @@ extends well past its own joint (children draw on top, so the extra material
 hides the seam instead of doubling). Verified on a cropped joint filmstrip —
 limbs now read as continuous.
 
+## `7a34789` — v0.19: both flagged unknowns resolved (not just re-flagged)
+
+- **Glove orientation: confirmed correct.** Added `--shots-fast` (0.09s
+  cadence) because the thrown glove is only on screen ~0.22s and the default
+  0.30s sampling skipped every single one. Knuckles lead, wrist trails — right
+  for a first-person thrust. No change needed.
+- But the filmstrip showed the glove was **big enough to hide the boss's
+  reaction**, which is the thing worth watching. 320px/1.4× → 250px/1.15×.
+- **Dizzy-head scale pop: I was wrong.** I'd said they were drawn *larger*.
+  Measured, most are **smaller** (235px skull vs neutral's 253) and only
+  `dizzy1` was bigger. All nine now normalise to a 253px skull before
+  anchoring. Verified across neutral and dizzy frames — no pop.
+- Also fixed **elbows bending backwards** on stagger: forearms rotated the same
+  direction as the upper arms. They counter-rotate now.
+
+## v0.20 — arcade scoring, cooldown, music, saves
+
+- **Score** replaces the punch counter, rolls up smoothly, with floating `+N`
+  popups that read louder on big hits.
+- **Punch cooldown (0.17s).** This was the open design question from the
+  proposal — without it, mashing or an autoclicker farmed unlimited combo and
+  made the whole guard/tell/dodge loop pointless.
+- **Combo multiplier raised to 4×** (was 1.8×). It can go this high precisely
+  *because* the cooldown means a long combo is earned on timing, not mashing.
+- **Fight music**: procedural chiptune loop — square bass + triangle arpeggio
+  over i–VI–III–VII in A minor, seamless. Still zero audio assets shipped.
+- **Settings toggle**: MUSIC/MUTED button (also the **M** key), persisted.
+- **Save file** at `user://punchmyboss.cfg` — best score, music, difficulty.
+  Verified round-tripping by exercising the toggle inside the demo run rather
+  than assuming it worked (`best=244, music=true, difficulty=2`).
+
 ---
 
 ## Decisions made without you (flagged per the brief)

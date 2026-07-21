@@ -92,6 +92,16 @@ var _combo_label: Label
 const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
+# --- arcade scoring --------------------------------------------------------
+var score: int = 0
+var best_score: int = 0
+var _score_shown: float = 0.0     # eased toward `score` so the readout rolls up
+# Gate on how fast punches can be thrown. Without it, mashing (or an
+# autoclicker) farmed unlimited combo and made the guard/tell/dodge loop
+# pointless - the whole game is meant to be timing, not DPS.
+const PUNCH_COOLDOWN := 0.17
+var _punch_cd: float = 0.0
+
 # typewriter
 var _type_full: String = ""
 var _type_shown: float = 0.0
@@ -113,6 +123,9 @@ var _clock: float = 0.0
 
 var _punch_player: AudioStreamPlayer
 var _ko_player: AudioStreamPlayer
+var _music_player: AudioStreamPlayer
+var _music_btn: Button
+var music_on: bool = true
 
 # --- juice / game-feel ---
 var _shake_time: float = 0.0
@@ -187,6 +200,7 @@ func _ready() -> void:
 	boss.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
+	_load_prefs()
 	_setup_shots()
 
 	_punch_player = AudioStreamPlayer.new()
@@ -195,6 +209,24 @@ func _ready() -> void:
 	_ko_player = AudioStreamPlayer.new()
 	_ko_player.stream = _make_ko()
 	add_child(_ko_player)
+	_setup_music()
+
+	# Music toggle, top-right. Also on the M key.
+	_music_btn = Button.new()
+	_music_btn.text = "MUSIC" if music_on else "MUTED"
+	_music_btn.focus_mode = Control.FOCUS_NONE
+	_music_btn.add_theme_font_size_override("font_size", 22)
+	_music_btn.anchor_left = 1.0
+	_music_btn.anchor_right = 1.0
+	_music_btn.offset_left = -180.0
+	_music_btn.offset_right = -20.0
+	# Below the dialogue bubble (which ends at y=336) - at y=152 it sat on top
+	# of the bubble's corner.
+	_music_btn.offset_top = 350.0
+	_music_btn.offset_bottom = 398.0
+	_music_btn.z_index = 60
+	_music_btn.pressed.connect(toggle_music)
+	safe.add_child(_music_btn)
 
 	# Overscan bg + tint so screen-shake never reveals a screen edge.
 	for n in [office, overlay]:
@@ -385,6 +417,15 @@ func _process(delta: float) -> void:
 	if rig_anim != null:
 		rig_anim.update(delta)
 
+	if _punch_cd > 0.0:
+		_punch_cd -= delta
+	# Roll the score readout up toward the real value rather than snapping.
+	if absf(_score_shown - float(score)) > 0.5:
+		_score_shown = lerpf(_score_shown, float(score), clampf(delta * 9.0, 0.0, 1.0))
+		counter.text = "SCORE  %d" % int(round(_score_shown))
+	elif counter.text == "":
+		counter.text = "SCORE  0"
+
 	# Combo decay + frenzy countdown.
 	if combo_time > 0.0:
 		combo_time -= delta
@@ -463,6 +504,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_Y: _press("Y")
 				# Dodging: arrows / WSD. Left and right slip the punch, down
 				# ducks (which the uppercut punishes).
+				KEY_M: toggle_music()
 				KEY_LEFT: _dodge(-1)
 				KEY_RIGHT: _dodge(1)
 				KEY_DOWN: _dodge(0)
@@ -484,8 +526,9 @@ func _unhandled_input(event: InputEvent) -> void:
 # Click/tap anywhere: throw a fist at that exact point. Hits on the boss deal
 # damage; clicks in open air still swing (and whiff).
 func _punch_click(pos: Vector2) -> void:
-	if _koing:
+	if _koing or _punch_cd > 0.0:
 		return
+	_punch_cd = PUNCH_COOLDOWN
 	var boss_rect := (boss as Control).get_global_rect().grow(20.0)
 	var head_rect := _part_global_rect(head).grow(10.0)
 	var boss_cx := boss_rect.position.x + boss_rect.size.x * 0.5
@@ -494,7 +537,6 @@ func _punch_click(pos: Vector2) -> void:
 		_throw_whiff(pos, side_left)
 		return
 	punches += 1
-	counter.text = "Punches: %d" % punches
 	_throw_fist(pos, side_left, head_rect.has_point(pos))
 
 func _throw_whiff(pos: Vector2, side_left: bool) -> void:
@@ -532,10 +574,10 @@ func _press(letter: String) -> void:
 		"Y": _punch(false, true)   # right hand -> head
 
 func _punch(side_left: bool, is_head: bool) -> void:
-	if _koing:
+	if _koing or _punch_cd > 0.0:
 		return
+	_punch_cd = PUNCH_COOLDOWN
 	punches += 1
-	counter.text = "Punches: %d" % punches
 	# Aim at the head or the torso cutout, biased to the struck side.
 	var r := _part_global_rect(head if is_head else torso_spr)
 	var fx := 0.30 if side_left else 0.70
@@ -654,11 +696,17 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 		_combo_label.scale = Vector2.ONE * 1.45
 	if crit:
 		crits += 1
-	var combo_mul := 1.0 + minf(float(combo) * 0.05, 0.8)
+	# Multiplier climbs to 4x. It can go this high because the punch cooldown
+	# means a long combo has to be *earned* on timing rather than farmed by
+	# mashing - which is what the old 1.8x ceiling was compensating for.
+	var combo_mul := 1.0 + minf(float(combo) * 0.14, 3.0)
 	var dmg := maxf(1.0, roundf(base * combo_mul * (1.35 if frenzy > 0.0 else 1.0)))
 	_set_hp(hp - dmg)
 	_spawn_text(impact + Vector2(randf_range(-20.0, 20.0), -50.0), str(int(dmg)),
 		64 if crit else 44, Color(1, 0.32, 0.21) if crit else Color(1, 1, 1))
+	# Score: damage scaled by the multiplier, bonus for criticals and frenzy.
+	var gained := int(roundf(dmg * 10.0 * combo_mul * (2.0 if crit else 1.0)))
+	_add_score(gained, impact)
 	if frenzy <= 0.0:
 		_set_rage(rage + (13.0 if crit else 5.0))
 		if rage >= 100.0:
@@ -667,6 +715,16 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 			_flash_screen(0.5)
 			_shake(18.0, 0.4)
 			_spawn_text(Vector2(960.0, 300.0), "FRENZY!!", 130, Color(1, 0.24, 0.94))
+
+# Award points and pop a floating "+N" at the impact. Big gains read louder.
+func _add_score(amount: int, at: Vector2) -> void:
+	if amount <= 0:
+		return
+	score += amount
+	best_score = maxi(best_score, score)
+	var big := amount >= 300
+	_spawn_text(at + Vector2(randf_range(-30.0, 30.0), -120.0), "+%d" % amount,
+		54 if big else 38, Color(1, 0.86, 0.20) if big else Color(0.95, 0.95, 0.7))
 
 # --- boss fight state machine ---
 #
@@ -823,6 +881,8 @@ func _game_over() -> void:
 	if _koing:
 		return
 	_koing = true
+	best_score = maxi(best_score, score)
+	_save_prefs()
 	_say("Ha! Back to your desk, champ.")
 	ko_banner.text = "YOU'RE FIRED"
 	ko_banner.pivot_offset = ko_banner.size / 2.0
@@ -1306,4 +1366,86 @@ func _demo_tick() -> void:
 		7:
 			_dodge(0)
 		_:
-			pass
+			# Exercise the music toggle (and therefore the save path) once per
+			# demo run, so persistence is verified rather than assumed.
+			if _demo_step == 8:
+				toggle_music()
+				toggle_music()
+
+# --- fight music ------------------------------------------------------------
+# A short procedural chiptune loop, generated the same way as the punch/K.O.
+# hits so the game still ships with zero audio assets. Square-wave bass on the
+# downbeats plus a triangle arpeggio; the whole bar loops seamlessly.
+const MUSIC_BPM := 132.0
+
+func _make_music() -> AudioStreamWAV:
+	var rate := 44100
+	var beat := 60.0 / MUSIC_BPM
+	var bars := 4
+	var dur := beat * 4.0 * float(bars)
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	# i-vi-III-VII in A minor: brooding but bouncy, fits the office-brawl tone.
+	var roots := [55.00, 43.65, 65.41, 49.00]   # A1, F1, C2, G1
+	var arp := [0.0, 3.0, 7.0, 12.0, 7.0, 3.0]  # minor triad up and back
+	for i in n:
+		var t := float(i) / rate
+		var bar := int(t / (beat * 4.0)) % bars
+		var root: float = roots[bar]
+		var tb := fmod(t, beat)                 # position inside the beat
+		# Bass: square wave, plucked envelope on every beat.
+		var benv := exp(-tb * 7.0)
+		var bs := (1.0 if sin(TAU * root * t) >= 0.0 else -1.0) * benv * 0.30
+		# Arpeggio: triangle, six steps per bar.
+		var step := int(t / (beat * 4.0 / float(arp.size()))) % arp.size()
+		var af: float = root * 4.0 * pow(2.0, float(arp[step]) / 12.0)
+		var aenv := exp(-fmod(t, beat * 4.0 / float(arp.size())) * 9.0)
+		var ph := fmod(af * t, 1.0)
+		var tri := 4.0 * absf(ph - 0.5) - 1.0
+		var as_ := tri * aenv * 0.16
+		data.encode_s16(i * 2, int(clampf(bs + as_, -1.0, 1.0) * 32767.0))
+	var w := _wav(data, rate)
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_begin = 0
+	w.loop_end = n
+	return w
+
+func _setup_music() -> void:
+	_music_player = AudioStreamPlayer.new()
+	_music_player.stream = _make_music()
+	_music_player.volume_db = -12.0
+	add_child(_music_player)
+	if music_on:
+		_music_player.play()
+
+func toggle_music() -> void:
+	music_on = not music_on
+	if _music_player != null:
+		if music_on:
+			_music_player.play()
+		else:
+			_music_player.stop()
+	if _music_btn != null:
+		_music_btn.text = "MUSIC" if music_on else "MUTED"
+		_music_btn.modulate = Color(1, 1, 1) if music_on else Color(0.6, 0.6, 0.66)
+	_save_prefs()
+
+# --- save data --------------------------------------------------------------
+# Best score and settings, in a plain ConfigFile under user://.
+const SAVE_PATH := "user://punchmyboss.cfg"
+
+func _load_prefs() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	best_score = int(cfg.get_value("score", "best", 0))
+	music_on = bool(cfg.get_value("settings", "music", true))
+	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
+
+func _save_prefs() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("score", "best", best_score)
+	cfg.set_value("settings", "music", music_on)
+	cfg.set_value("settings", "difficulty", difficulty)
+	cfg.save(SAVE_PATH)
