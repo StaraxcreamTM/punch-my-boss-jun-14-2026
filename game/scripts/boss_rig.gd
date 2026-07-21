@@ -381,6 +381,32 @@ func dodge(dir: int) -> void:
 	pose({"chest": -0.20 * s, "head": -0.25 * s}, 0.13, 0.10, 0.30)
 
 
+# Holdable dodge: snap into the lean and STAY there until released. The Big Boy
+# Boxing research removed blocking and made dodges fluid and holdable to reward
+# fast movement - this is that. Snap in fast (cartoon timing), no return.
+func dodge_hold(dir: int) -> void:
+	var s := float(dir)
+	var tb := create_tween()
+	tb.set_parallel(true)
+	if dir == 0:
+		tb.tween_property(self, "body_pos", Vector2(0.0, 96.0), 0.08) \
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		pose({"thighL": 0.4, "thighR": -0.4, "shinL": -0.6, "shinR": 0.6, "spine": 0.12}, 0.08)
+	else:
+		tb.tween_property(self, "body_pos", Vector2(165.0 * s, 12.0), 0.08) \
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		tb.tween_property(self, "body_rot", 0.24 * s, 0.08).set_trans(Tween.TRANS_EXPO)
+		pose({"chest": -0.24 * s, "head": -0.28 * s, "hip": 0.10 * s}, 0.08)
+
+func dodge_release() -> void:
+	var tb := create_tween()
+	tb.set_parallel(true)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tb.tween_property(self, "body_rot", 0.0, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pose({"chest": 0.0, "head": 0.0, "hip": 0.0, "spine": 0.0,
+		"thighL": 0.0, "thighR": 0.0, "shinL": 0.0, "shinR": 0.0}, 0.22)
+
+
 # --- REACTIONS (Looney Tunes) ----------------------------------------------
 
 # Standard flinch: head snaps aside, torso rocks, arms fly out.

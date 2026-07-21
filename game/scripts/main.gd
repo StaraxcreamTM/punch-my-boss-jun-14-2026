@@ -191,6 +191,7 @@ var player_hp_max: float = 100.0
 var player_hp: float = 100.0
 var _dodge_time: float = 0.0
 var _dodge_dir: int = 0       # -1 left, +1 right, 0 duck
+var _dodge_holding: bool = false
 const DODGE_WINDOW := 0.40
 var _player_bar: Panel
 
@@ -639,14 +640,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey or event is InputEventMouseButton 			or event is InputEventScreenTouch or event is InputEventJoypadButton:
 		_kick_music()
 	if event is InputEventKey:
+		# Dodge keys are HOLDABLE: begin the dodge on press, release on key-up.
+		# Handled outside the press-only block so key-up is seen.
+		if not event.echo:
+			match event.keycode:
+				KEY_LEFT:
+					_dodge_press(-1) if event.pressed else _dodge_lift(-1)
+				KEY_RIGHT:
+					_dodge_press(1) if event.pressed else _dodge_lift(1)
+				KEY_DOWN:
+					_dodge_press(0) if event.pressed else _dodge_lift(0)
 		if event.pressed and not event.echo:
 			match event.keycode:
 				KEY_A: _press("A")
 				KEY_B: _press("B")
 				KEY_X: _press("X")
 				KEY_Y: _press("Y")
-				# Dodging: arrows / WSD. Left and right slip the punch, down
-				# ducks (which the uppercut punishes).
 				KEY_M: toggle_music()
 				# Customisation: skin / hair / moustache.
 				KEY_K: cycle_look("skin")
@@ -656,19 +665,20 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_2: _pick_difficulty(Difficulty.DEFENSIVE)
 				KEY_3: _pick_difficulty(Difficulty.BRAWLER)
 				KEY_SPACE, KEY_ENTER: _advance_screen()
-				KEY_LEFT: _dodge(-1)
-				KEY_RIGHT: _dodge(1)
-				KEY_DOWN: _dodge(0)
 	elif event is InputEventJoypadButton:
+		match event.button_index:
+			JOY_BUTTON_DPAD_LEFT:
+				_dodge_press(-1) if event.pressed else _dodge_lift(-1)
+			JOY_BUTTON_DPAD_RIGHT:
+				_dodge_press(1) if event.pressed else _dodge_lift(1)
+			JOY_BUTTON_DPAD_DOWN:
+				_dodge_press(0) if event.pressed else _dodge_lift(0)
 		if event.pressed:
 			match event.button_index:
 				JOY_BUTTON_A: _press("A")
 				JOY_BUTTON_B: _press("B")
 				JOY_BUTTON_X: _press("X")
 				JOY_BUTTON_Y: _press("Y")
-				JOY_BUTTON_DPAD_LEFT: _dodge(-1)
-				JOY_BUTTON_DPAD_RIGHT: _dodge(1)
-				JOY_BUTTON_DPAD_DOWN: _dodge(0)
 	elif event is InputEventMouseButton:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -958,7 +968,11 @@ func _update_fight(delta: float) -> void:
 	var lean := 0.0
 	var tint := Color(1, 1, 1)
 	_state_time -= delta
-	if _dodge_time > 0.0:
+	# While a dodge key is held the evade window stays full, so a held lean
+	# covers the whole attack - the "holdable dodge" that rewards staying mobile.
+	if _dodge_holding:
+		_dodge_time = DODGE_WINDOW
+	elif _dodge_time > 0.0:
 		_dodge_time -= delta
 	match _state:
 		BossState.GUARD:
@@ -1119,18 +1133,32 @@ func _enter_vulnerable() -> void:
 	if rig_anim != null:
 		rig_anim.unblock()
 
-# Player dodge. Brief invulnerability window; direction matters against the
-# uppercut, which punishes ducking.
-func _dodge(dir: int) -> void:
-	if _koing:
+# Holdable dodge. Press to snap into the lean and STAY evading while held;
+# release to spring back. Direction matters at the strike frame - the uppercut
+# punishes ducking, the overhead must be ducked, the barge must be sidestepped
+# (see _resolve_attack). Holding the wrong way when the attack lands = a hit.
+func _dodge_press(dir: int) -> void:
+	if _koing or phase != Phase.FIGHT:
 		return
-	_dodge_time = DODGE_WINDOW
+	_dodge_holding = true
 	_dodge_dir = dir
-	# The camera leans opposite the dodge so it reads as the player moving.
-	var shift := Vector2(-90.0 * float(dir), 30.0 if dir == 0 else 0.0)
+	_dodge_time = DODGE_WINDOW
+	if rig_anim != null:
+		rig_anim.dodge_hold(dir)
+	# Camera leans opposite so it reads as the player slipping.
+	var shift := Vector2(-90.0 * float(dir), 34.0 if dir == 0 else 0.0)
 	var tw := create_tween()
-	tw.tween_property(safe, "position", shift, 0.10).set_trans(Tween.TRANS_QUAD)
-	tw.tween_property(safe, "position", Vector2.ZERO, 0.24).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(safe, "position", shift, 0.09).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+
+func _dodge_lift(dir: int) -> void:
+	# Only the currently-held direction releases (ignoring the other arrow).
+	if not _dodge_holding or dir != _dodge_dir:
+		return
+	_dodge_holding = false
+	if rig_anim != null:
+		rig_anim.dodge_release()
+	var tw := create_tween()
+	tw.tween_property(safe, "position", Vector2.ZERO, 0.22).set_trans(Tween.TRANS_BACK)
 
 func _set_player_hp(v: float) -> void:
 	player_hp = clampf(v, 0.0, player_hp_max)
@@ -1727,13 +1755,17 @@ func _demo_tick() -> void:
 		3:
 			_punch(true, false)                  # body
 		4:
-			_dodge(-1)
+			# Hold a dodge for a beat, then release (exercises the holdable path).
+			_dodge_press(-1)
+			get_tree().create_timer(0.5).timeout.connect(func() -> void: _dodge_lift(-1))
 		5:
 			_punch(false, false)
 		6:
-			_dodge(1)
+			_dodge_press(1)
+			get_tree().create_timer(0.5).timeout.connect(func() -> void: _dodge_lift(1))
 		7:
-			_dodge(0)
+			_dodge_press(0)
+			get_tree().create_timer(0.4).timeout.connect(func() -> void: _dodge_lift(0))
 			cycle_look("skin")
 			cycle_look("hair")
 			cycle_look("moustache")
