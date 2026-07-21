@@ -622,6 +622,8 @@ func _make_face_button(letter: String, col: Color, center: Vector2) -> Button:
 	return b
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey or event is InputEventMouseButton 			or event is InputEventScreenTouch or event is InputEventJoypadButton:
+		_kick_music()
 	if event is InputEventKey:
 		if event.pressed and not event.echo:
 			match event.keycode:
@@ -1578,6 +1580,7 @@ func _setup_shots() -> void:
 			f = d.get_next()
 		d.list_dir_end()
 	print("[shots] writing to ", ProjectSettings.globalize_path(dir))
+	_kick_music()   # no real input in the demo, so start it explicitly
 	var t := Timer.new()
 	t.wait_time = _shot_interval
 	t.autostart = true
@@ -1725,10 +1728,24 @@ func _setup_music() -> void:
 	_music_player.stream = _make_music()
 	_music_player.volume_db = -12.0
 	add_child(_music_player)
+	# Deliberately NOT started here. Browsers refuse audio until the user has
+	# interacted with the page, so a web build that calls play() during _ready
+	# stays silent for the whole session. Started on the first input instead
+	# (see _kick_music), which costs nothing on desktop or mobile.
+
+# Start the music on the first real user interaction. Required for web audio
+# autoplay policy; a harmless no-op everywhere else.
+var _music_started: bool = false
+
+func _kick_music() -> void:
+	if _music_started or _music_player == null:
+		return
+	_music_started = true
 	if music_on:
 		_music_player.play()
 
 func toggle_music() -> void:
+	_music_started = true
 	music_on = not music_on
 	if _music_player != null:
 		if music_on:
