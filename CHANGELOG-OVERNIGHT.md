@@ -131,6 +131,27 @@ limbs now read as continuous.
   Verified round-tripping by exercising the toggle inside the demo run rather
   than assuming it worked (`best=244, music=true, difficulty=2`).
 
+## v0.21 — title, pre-fight, game over, victory
+
+Proper game phases: **TITLE → PREFIGHT → FIGHT → GAMEOVER/VICTORY → TITLE**.
+The fight loop and all player input are gated on `phase == FIGHT`, and the
+fight HUD hides on menu screens.
+
+- **Title**: best score, difficulty picker (**1/2/3**), tap to start
+- **Pre-fight**: level name + the boss's opening line, using the existing
+  typewriter — the "talk to him before you fight him" beat
+- **Game over / victory**: score, best, max combo, crit count
+- Victory advances the level; game over retries
+
+**Fixed a real balance bug while here:** `_knockout()` used to loop straight
+into another round at **1.4× HP**, which compounds to ~100k HP by round 20 and
+means the player can never actually finish. Beating him now ends the level.
+
+**Also fixed a memory leak I introduced.** The looping music stream survived
+teardown — 2 leaked `ObjectDB` instances at exit. I confirmed causation by
+disabling the music entirely (warning vanished) rather than guessing, then
+released the stream on close. Clean exit now.
+
 ---
 
 ## Decisions made without you (flagged per the brief)

@@ -92,6 +92,16 @@ var _combo_label: Label
 const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
+# --- screens / phases ------------------------------------------------------
+enum Phase { TITLE, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+var phase: int = Phase.TITLE
+var _screen: Control
+var _screen_dim: ColorRect
+var _screen_title: Label
+var _screen_sub: Label
+var _screen_hint: Label
+var _hud_nodes: Array = []      # fight HUD, hidden on menu screens
+
 # --- arcade scoring --------------------------------------------------------
 var score: int = 0
 var best_score: int = 0
@@ -379,6 +389,15 @@ func _ready() -> void:
 	_set_hp(hp_max)
 	_set_player_hp(player_hp_max)
 	_say(String(_level_cfg().get("line", OPENERS[randi() % OPENERS.size()])))
+	_hud_nodes = [
+		$Safe/RageLabel, $Safe/RageTrack, $Safe/KoLabel, $Safe/KoTrack,
+		$Safe/Hint, counter, ptrack, plabel, _combo_label,
+	]
+	for b in _buttons.values():
+		_hud_nodes.append(b)
+	counter.text = "SCORE  0"
+	_build_screens()
+	_show_title()
 
 	var taunt_timer := Timer.new()
 	taunt_timer.wait_time = 3.8
@@ -409,8 +428,8 @@ func _process(delta: float) -> void:
 	overlay.position = sh
 	safe.position = sh
 
-	# The boss fight loop (guard -> wind-up tell -> vulnerable window).
-	if not _koing:
+	# The boss fight loop, only while an actual fight is running.
+	if not _koing and phase == Phase.FIGHT:
 		_update_fight(delta)
 
 	# Idle life + any in-flight animation offsets, composed onto the bones.
@@ -505,6 +524,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				# Dodging: arrows / WSD. Left and right slip the punch, down
 				# ducks (which the uppercut punishes).
 				KEY_M: toggle_music()
+				KEY_1: _pick_difficulty(Difficulty.BAG)
+				KEY_2: _pick_difficulty(Difficulty.DEFENSIVE)
+				KEY_3: _pick_difficulty(Difficulty.BRAWLER)
+				KEY_SPACE, KEY_ENTER: _advance_screen()
 				KEY_LEFT: _dodge(-1)
 				KEY_RIGHT: _dodge(1)
 				KEY_DOWN: _dodge(0)
@@ -521,12 +544,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			_punch_click(get_global_mouse_position())
+			if phase == Phase.FIGHT:
+				_punch_click(get_global_mouse_position())
+			else:
+				_advance_screen()
 
 # Click/tap anywhere: throw a fist at that exact point. Hits on the boss deal
 # damage; clicks in open air still swing (and whiff).
 func _punch_click(pos: Vector2) -> void:
-	if _koing or _punch_cd > 0.0:
+	if phase != Phase.FIGHT or _koing or _punch_cd > 0.0:
 		return
 	_punch_cd = PUNCH_COOLDOWN
 	var boss_rect := (boss as Control).get_global_rect().grow(20.0)
@@ -574,7 +600,7 @@ func _press(letter: String) -> void:
 		"Y": _punch(false, true)   # right hand -> head
 
 func _punch(side_left: bool, is_head: bool) -> void:
-	if _koing or _punch_cd > 0.0:
+	if phase != Phase.FIGHT or _koing or _punch_cd > 0.0:
 		return
 	_punch_cd = PUNCH_COOLDOWN
 	punches += 1
@@ -895,8 +921,8 @@ func _game_over() -> void:
 		rig_anim.laugh()
 	_flash_screen(0.5)
 	_shake(24.0, 0.5)
-	await get_tree().create_timer(2.4).timeout
-	_restart_level()
+	await get_tree().create_timer(2.0).timeout
+	_show_gameover(false)
 
 # Restart the current level with everything reset.
 func _restart_level() -> void:
@@ -975,17 +1001,12 @@ func _knockout() -> void:
 	_say("...okay. Let's not put THAT in the performance review.")
 	await get_tree().create_timer(1.1).timeout
 
-	# Fade the banner and reset the boss for the next round: more HP, back for more.
+	# Fade the banner and stand him back up, then hand off to the win screen.
+	# (The old behaviour looped straight into another round with 1.4x HP, which
+	# compounded to ~100k HP by round 20 and never let the player finish.)
 	var ft := create_tween()
 	ft.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
-	round_num += 1
-	hp_max = roundf(hp_max * ROUND_HP_SCALE)
-	_set_hp(hp_max)
-	_set_rage(0.0)
-	combo = 0
-	frenzy = 0.0
 	_react_time = 0.0
-	# Clear pose offsets so he comes back standing straight.
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.lean = 0.0
@@ -998,19 +1019,12 @@ func _knockout() -> void:
 	# Hand the body transform back to the rig now the cutscene is done.
 	if rig_anim != null:
 		rig_anim.own_body = true
-
-	# Round banner.
-	ko_banner.text = "ROUND %d" % round_num
-	ko_banner.modulate.a = 1.0
-	ko_banner.scale = Vector2(0.6, 0.6)
-	var rt := create_tween()
-	rt.tween_property(ko_banner, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	rt.tween_interval(0.9)
-	rt.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
-	_say(ROUND_LINES[randi() % ROUND_LINES.size()])
-
 	_koing = false
-	_enter_guard()
+	if _shot_mode:
+		# Keep the filmstrip demo fighting instead of parking on a screen.
+		_start_fight()
+		return
+	_show_gameover(true)
 
 # --- juice / game-feel helpers ---
 
@@ -1343,6 +1357,7 @@ func _take_shot() -> void:
 	_shot_i += 1
 	if _shot_i >= SHOT_COUNT:
 		print("[shots] done: %d frames" % _shot_i)
+		_release_music()
 		get_tree().quit()
 
 # Scripted play so the filmstrip exercises real states: body and head punches,
@@ -1350,6 +1365,11 @@ func _take_shot() -> void:
 # attack cycle and idle life get captured too.
 func _demo_tick() -> void:
 	if _koing:
+		return
+	# Walk the screen flow (title -> prefight -> fight) so the filmstrip covers
+	# the menus as well as combat.
+	if phase != Phase.FIGHT:
+		_advance_screen()
 		return
 	_demo_step += 1
 	match _demo_step % 8:
@@ -1411,6 +1431,19 @@ func _make_music() -> AudioStreamWAV:
 	w.loop_end = n
 	return w
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		_release_music()
+
+# A looping AudioStreamWAV left playing survives teardown - its stream and
+# playback show up as 2 leaked ObjectDB instances at exit. Confirmed by
+# disabling the music entirely, which cleared the warning. Stopping and
+# detaching the stream before the tree goes away releases both.
+func _release_music() -> void:
+	if _music_player != null and is_instance_valid(_music_player):
+		_music_player.stop()
+		_music_player.stream = null
+
 func _setup_music() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.stream = _make_music()
@@ -1449,3 +1482,161 @@ func _save_prefs() -> void:
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.save(SAVE_PATH)
+
+# --- screens / game phases --------------------------------------------------
+# TITLE -> PREFIGHT (boss talks) -> FIGHT -> GAMEOVER or VICTORY -> TITLE.
+# Everything lives on one overlay Control that's shown/hidden; the fight loop
+# and player input are gated on phase == FIGHT.
+
+func _build_screens() -> void:
+	_screen = Control.new()
+	_screen.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen.z_index = 90
+	add_child(_screen)
+
+	_screen_dim = ColorRect.new()
+	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.82)
+	_screen_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_screen_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen.add_child(_screen_dim)
+
+	_screen_title = _big_label(120, Color(1, 0.86, 0.16), -0.03)
+	_screen_title.offset_top = 220.0
+	_screen_title.offset_bottom = 400.0
+	_screen.add_child(_screen_title)
+
+	_screen_sub = _big_label(46, Color(1, 1, 1), 0.0)
+	_screen_sub.offset_top = 430.0
+	_screen_sub.offset_bottom = 520.0
+	_screen.add_child(_screen_sub)
+
+	_screen_hint = _big_label(38, Color(0.85, 0.9, 1.0), 0.0)
+	_screen_hint.offset_top = 700.0
+	_screen_hint.offset_bottom = 780.0
+	_screen.add_child(_screen_hint)
+
+func _big_label(size: int, col: Color, rot: float) -> Label:
+	var l := Label.new()
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	l.add_theme_constant_override("outline_size", 14)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.anchor_right = 1.0
+	l.rotation = rot
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+func _set_hud_visible(v: bool) -> void:
+	for n in _hud_nodes:
+		if n != null and is_instance_valid(n):
+			n.visible = v
+	# The combo counter has its own show/hide rule in _process.
+	if _combo_label != null:
+		_combo_label.visible = v and combo >= 2
+
+func _show_title() -> void:
+	phase = Phase.TITLE
+	_set_hud_visible(false)
+	boss_line.get_parent().visible = false
+	_screen.visible = true
+	_screen_title.text = "PUNCH\nMY BOSS"
+	_screen_title.offset_top = 140.0
+	_screen_title.offset_bottom = 420.0
+	_screen_sub.text = "BEST  %d" % best_score
+	_screen_hint.text = "%s\n\n1 / 2 / 3 pick difficulty  ·  tap or press any key to start" % _difficulty_name()
+	if rig_anim != null:
+		rig_anim.taunt()
+
+func _pick_difficulty(d: int) -> void:
+	if phase != Phase.TITLE:
+		return
+	difficulty = d
+	_save_prefs()
+	_show_title()
+
+func _difficulty_name() -> String:
+	match difficulty:
+		Difficulty.BAG:
+			return "1  PUNCHING BAG   (he never fights back)"
+		Difficulty.DEFENSIVE:
+			return "2  DEFENSIVE   (he guards, but won't swing)"
+		_:
+			return "3  BRAWLER   (he hits back - dodge!)"
+
+# The pre-fight beat: he gets a line in before the bell.
+func _start_prefight() -> void:
+	phase = Phase.PREFIGHT
+	_set_hud_visible(false)
+	boss_line.get_parent().visible = true      # he gets a line in first
+	_screen.visible = true
+	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.45)
+	var cfg := _level_cfg()
+	_screen_title.text = "LEVEL %d" % level
+	_screen_title.offset_top = 150.0
+	_screen_title.offset_bottom = 300.0
+	_screen_sub.text = String(cfg.get("name", ""))
+	_screen_hint.text = "tap to begin"
+	_say(String(cfg.get("line", "")))
+	if rig_anim != null:
+		rig_anim.point_at_player()
+
+func _start_fight() -> void:
+	phase = Phase.FIGHT
+	_set_hud_visible(true)
+	boss_line.get_parent().visible = true
+	_screen.visible = false
+	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.82)
+	var cfg := _level_cfg()
+	hp_max = float(cfg.get("hp", 120.0))
+	_set_hp(hp_max)
+	_set_player_hp(player_hp_max)
+	_set_rage(0.0)
+	combo = 0
+	frenzy = 0.0
+	_koing = false
+	if rig_anim != null:
+		rig_anim.revive()
+	ko_banner.text = "FIGHT!"
+	ko_banner.pivot_offset = ko_banner.size / 2.0
+	ko_banner.modulate.a = 1.0
+	ko_banner.scale = Vector2(0.6, 0.6)
+	var t := create_tween()
+	t.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.25).set_trans(Tween.TRANS_BACK)
+	t.tween_interval(0.5)
+	t.tween_property(ko_banner, "modulate:a", 0.0, 0.35)
+	_enter_guard()
+
+func _show_gameover(won: bool) -> void:
+	phase = Phase.VICTORY if won else Phase.GAMEOVER
+	best_score = maxi(best_score, score)
+	_save_prefs()
+	_set_hud_visible(false)
+	boss_line.get_parent().visible = false
+	_screen.visible = true
+	_screen_title.text = "YOU WIN" if won else "YOU'RE FIRED"
+	_screen_title.offset_top = 180.0
+	_screen_title.offset_bottom = 340.0
+	_screen_sub.text = "SCORE %d      BEST %d\nmax combo %d      crits %d" % [score, best_score, max_combo, crits]
+	_screen_hint.text = "tap to continue" if won else "tap to try again"
+
+# Any tap / key advances whichever screen is up.
+func _advance_screen() -> void:
+	match phase:
+		Phase.TITLE:
+			_start_prefight()
+		Phase.PREFIGHT:
+			_start_fight()
+		Phase.VICTORY:
+			level = mini(level + 1, LEVELS.size())
+			score = 0
+			_score_shown = 0.0
+			_start_prefight()
+		Phase.GAMEOVER:
+			score = 0
+			_score_shown = 0.0
+			_start_prefight()
+		_:
+			pass
