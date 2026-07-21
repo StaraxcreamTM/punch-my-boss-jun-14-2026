@@ -74,6 +74,10 @@ var torso_spr: Sprite2D
 # lives in .godot/ which is gitignored, so a fresh clone would fail to parse
 # until someone opened the editor.
 const BossRigScript := preload("res://scripts/boss_rig.gd")
+# 346 hand-written boss lines. Preloaded as a plain data script.
+const Dia := preload("res://scripts/dialogue.gd")
+# Anti-repeat selection state: category -> remaining shuffled indices.
+var _line_bag: Dictionary = {}
 var rig_anim  # BossRig
 
 var rage: float = 0.0
@@ -192,6 +196,26 @@ const LEVELS := [
 	{"name": "Open Plan", "hp": 240.0, "pace": 1.2, "dmg": 0.0, "gimmick": "objects",
 	 "line": "No walls means no place to hide. For YOU, obviously."},
 ]
+
+# Bag-shuffle picker: a category works through every line before any repeats,
+# so a 40-line pool never feels like 5. Beats plain randf(), which clusters.
+func _line(cat: String, pool: Array) -> String:
+	if pool.is_empty():
+		return ""
+	if not _line_bag.has(cat) or (_line_bag[cat] as Array).is_empty():
+		var idx: Array = range(pool.size())
+		idx.shuffle()
+		_line_bag[cat] = idx
+	var i: int = (_line_bag[cat] as Array).pop_back()
+	return String(pool[i])
+
+# Say a line from a category, unless something more important is still typing.
+func _say_line(cat: String, pool: Array, force: bool = false) -> void:
+	if pool.is_empty():
+		return
+	if not force and _type_shown < float(_type_full.length()):
+		return   # let the current line finish
+	_say(_line(cat, pool))
 
 func _level_cfg() -> Dictionary:
 	return LEVELS[clampi(level - 1, 0, LEVELS.size() - 1)]
@@ -491,7 +515,7 @@ func _say(text: String) -> void:
 	boss_line.text = ""
 
 func _next_taunt() -> void:
-	_say(TAUNTS[randi() % TAUNTS.size()])
+	_say(_line("taunt", Dia.TAUNT))
 	_set_rage(rage + float(randi_range(6, 22)))
 
 func _make_face_button(letter: String, col: Color, center: Vector2) -> Button:
@@ -611,6 +635,8 @@ func _throw_whiff(pos: Vector2, side_left: bool) -> void:
 	tw.tween_property(f, "modulate:a", 0.0, 0.14)
 	tw.tween_callback(f.queue_free)
 	_spawn_text(pos + Vector2(0, -60), "whiff", 34, Color(0.82, 0.84, 0.9))
+	if randf() < 0.35:
+		_say_line("miss", Dia.MISS)
 
 func _press(letter: String) -> void:
 	if _buttons.has(letter):
@@ -677,8 +703,19 @@ func _land(impact: Vector2, is_head: bool, side_left: bool) -> void:
 		_chip(impact, text_pos)
 	var crit := _state == BossState.VULNERABLE or frenzy > 0.0
 	_react_hit(is_head, side_left, crit)
+	_hit_banter()
 	if hp <= 0.0:
 		_knockout()
+
+# Banter on hits: sparse on purpose, and it escalates. Low HP switches to the
+# desperation bank, and a running combo gets its own reactions.
+func _hit_banter() -> void:
+	if hp <= hp_max * 0.28 and randf() < 0.5:
+		_say_line("lowhp", Dia.LOWHP)
+	elif combo >= 4 and randf() < 0.3:
+		_say_line("combo", Dia.COMBO_LINES)
+	elif randf() < 0.22:
+		_say_line("hit", Dia.HIT)
 
 # Cartoon hit reactions. Chip hits just flinch; criticals roll a big Looney
 # Tunes gag — the head spinning right around, the neck stretching like rubber,
@@ -955,7 +992,7 @@ func _game_over() -> void:
 	_koing = true
 	best_score = maxi(best_score, score)
 	_save_prefs()
-	_say("Ha! Back to your desk, champ.")
+	_say(_line("down", Dia.PLAYER_DOWN))
 	ko_banner.text = "YOU'RE FIRED"
 	ko_banner.pivot_offset = ko_banner.size / 2.0
 	ko_banner.modulate.a = 1.0
@@ -1044,7 +1081,7 @@ func _knockout() -> void:
 	await fly.finished
 
 	Engine.time_scale = 1.0
-	_say("...okay. Let's not put THAT in the performance review.")
+	_say(_line("ko", Dia.KO))
 	await get_tree().create_timer(1.1).timeout
 
 	# Fade the banner and stand him back up, then hand off to the win screen.
@@ -1532,8 +1569,13 @@ func _make_music() -> AudioStreamWAV:
 	return w
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+	# --quit-after and a window close take different teardown paths, so cover
+	# both plus the plain tree exit.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE 			or what == NOTIFICATION_EXIT_TREE:
 		_release_music()
+
+func _exit_tree() -> void:
+	_release_music()
 
 # A looping AudioStreamWAV left playing survives teardown - its stream and
 # playback show up as 2 leaked ObjectDB instances at exit. Confirmed by
@@ -1685,7 +1727,10 @@ func _start_prefight() -> void:
 	_screen_title.offset_bottom = 300.0
 	_screen_sub.text = String(cfg.get("name", ""))
 	_screen_hint.text = "tap to begin"
-	_say(String(cfg.get("line", "")))
+	var pre: Array = Dia.PREFIGHT.get(level, [])
+	if pre.is_empty():
+		pre = [String(cfg.get("line", ""))]
+	_say(_line("prefight%d" % level, pre))
 	if rig_anim != null:
 		rig_anim.point_at_player()
 
@@ -1923,6 +1968,8 @@ func _impact_throw(speed: float) -> void:
 	_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.35
 	rig_anim.squash(power)
+	if randf() < 0.4:
+		_say_line("thrown", Dia.THROWN)
 	_apply_damage(at, 4.0 + 9.0 * power, power > 1.0)
 	if hp <= 0.0:
 		_knockout()
@@ -1967,6 +2014,8 @@ func _prop_hit(at: Vector2) -> void:
 	_react_tex = _react[randi() % _react.size()]
 	_react_time = 0.4
 	_react_hit(head_hit, at.x < r.position.x + r.size.x * 0.5, head_hit)
+	if randf() < 0.35:
+		_say_line("pelted", Dia.PELTED)
 	_apply_damage(at, 7.0 if head_hit else 5.0, head_hit)
 	if hp <= 0.0:
 		_knockout()
