@@ -552,6 +552,7 @@ func _process(delta: float) -> void:
 		rig_anim.update(delta)
 
 	_update_pose(delta)
+	_update_anim(delta)
 	if _punch_cd > 0.0:
 		_punch_cd -= delta
 	# Roll the score readout up toward the real value rather than snapping.
@@ -2010,9 +2011,15 @@ func _start_fight() -> void:
 		_prompt.visible = false
 		_say(String(_level_cfg().get("line", "")))
 	else:
-		if has_pose("walk"):
+		if has_anim("charge"):
+			# Hand-drawn charge intro (from the uploaded video). It plays once,
+			# then the fight begins on the callback.
+			play_anim("charge", 12.0, _enter_guard)
+		elif has_pose("walk"):
 			play_entrance()
-		_enter_guard()
+			_enter_guard()
+		else:
+			_enter_guard()
 
 func _show_gameover(won: bool) -> void:
 	close_menu()
@@ -3173,3 +3180,82 @@ func _on_cycle_difficulty() -> void:
 	difficulty = (difficulty + 1) % 3
 	_save_prefs()
 	open_menu(Phase.OPTIONS)
+
+# --- hand-drawn frame animation ---------------------------------------------
+# Plays a keyed frame sequence (e.g. the charge extracted from the uploaded
+# video) on the same overlay sprite the poses use. One-shot: it runs once, then
+# hands back to the rig via an optional callback. Frames share a union bbox so
+# the character doesn't jitter between them.
+var _anim_frames: Array = []
+var _anim_i: int = 0
+var _anim_t: float = 0.0
+var _anim_fps: float = 8.0
+var _anim_playing: bool = false
+var _anim_done: Callable
+
+func _anim_dir(name: String) -> String:
+	return "res://assets/%s/anim/%s" % ["boss3" if character == "big" else "boss2", name]
+
+func has_anim(name: String) -> bool:
+	return ResourceLoader.exists("%s/f000.png" % _anim_dir(name))
+
+func play_anim(name: String, fps: float, done: Callable = Callable()) -> void:
+	if not has_anim(name):
+		if done.is_valid():
+			done.call()
+		return
+	_anim_frames.clear()
+	var dir := _anim_dir(name)
+	var i := 0
+	while true:
+		var path := "%s/f%03d.png" % [dir, i]
+		if not ResourceLoader.exists(path):
+			break
+		_anim_frames.append(load(path))
+		i += 1
+	if _anim_frames.is_empty():
+		if done.is_valid():
+			done.call()
+		return
+	# Reuse the pose sprite as the surface.
+	if _pose_spr == null:
+		_pose_spr = Sprite2D.new()
+		_pose_spr.centered = false
+		_pose_spr.z_index = 20
+		_pose_spr.material = _outline_mat
+		rig.add_child(_pose_spr)
+	_pose_name = "@anim"
+	_set_rig_visible(false)
+	_anim_i = 0
+	_anim_t = 0.0
+	_anim_fps = fps
+	_anim_playing = true
+	_anim_done = done
+	_show_anim_frame()
+
+func _show_anim_frame() -> void:
+	var tex: Texture2D = _anim_frames[_anim_i]
+	_pose_spr.texture = tex
+	# Scale so the frame stands ~full rig height, feet on the floor line, and
+	# horizontally centred - matching where the sliced figure stands.
+	var target_h := 1180.0
+	var sc := target_h / float(tex.get_height())
+	_pose_spr.scale = Vector2(sc, sc)
+	_pose_spr.position = Vector2(260.0 - tex.get_width() * sc * 0.5, 1240.0 - tex.get_height() * sc)
+	_pose_spr.visible = true
+
+func _update_anim(delta: float) -> void:
+	if not _anim_playing:
+		return
+	_anim_t += delta
+	var frame_dur := 1.0 / _anim_fps
+	while _anim_t >= frame_dur:
+		_anim_t -= frame_dur
+		_anim_i += 1
+		if _anim_i >= _anim_frames.size():
+			_anim_playing = false
+			_pose_name = ""
+			if _anim_done.is_valid():
+				_anim_done.call()
+			return
+		_show_anim_frame()
