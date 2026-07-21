@@ -195,6 +195,12 @@ const LEVELS := [
 	 "line": "Trust fall! You catch me, right? ...Right?"},
 	{"name": "Open Plan", "hp": 240.0, "pace": 1.2, "dmg": 0.0, "gimmick": "objects",
 	 "line": "No walls means no place to hide. For YOU, obviously."},
+	{"name": "The Offsite", "hp": 200.0, "pace": 1.2, "dmg": 0.0, "gimmick": "bridge",
+	 "line": "Careful. It's a long way down and I've read the insurance policy."},
+	{"name": "Company Car", "hp": 280.0, "pace": 1.2, "dmg": 0.0, "gimmick": "car",
+	 "line": "I got the company car. You got the company newsletter."},
+	{"name": "Moonshot", "hp": 320.0, "pace": 1.2, "dmg": 0.0, "gimmick": "moon",
+	 "line": "They said reach for the stars. I meant it as a metaphor. STOP—"},
 ]
 
 # Bag-shuffle picker: a category works through every line before any repeats,
@@ -460,7 +466,7 @@ func _process(delta: float) -> void:
 	# The boss fight loop, only while an actual fight is running. Gimmick
 	# levels swap it out for their own mechanic.
 	if not _koing and phase == Phase.FIGHT:
-		if _gimmick() in ["throw", "objects"]:
+		if _gimmick() in ["throw", "objects", "bridge", "car", "moon"]:
 			_update_gimmick(delta)
 		else:
 			_update_fight(delta)
@@ -596,6 +602,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif _gimmick() == "objects":
 				if event.pressed:
 					_throw_prop(mp)
+			elif _gimmick() == "bridge":
+				if event.pressed:
+					_bridge_push(mp)
+			elif _gimmick() == "car":
+				if event.pressed:
+					_car_run(mp)
+			elif _gimmick() == "moon":
+				if event.pressed:
+					_moon_tap()
 			elif event.pressed:
 				_punch_click(mp)
 
@@ -1504,6 +1519,17 @@ func _demo_tick() -> void:
 			_throw_prop(r.position + Vector2(r.size.x * randf_range(0.2, 0.8),
 				r.size.y * randf_range(0.1, 0.7)))
 			return
+		"bridge":
+			var rb := (boss as Control).get_global_rect()
+			_bridge_push(rb.position + Vector2(rb.size.x * (0.1 if randf() < 0.5 else 0.9),
+				rb.size.y * 0.4))
+			return
+		"car":
+			_car_run(Vector2.ZERO)
+			return
+		"moon":
+			_moon_tap()
+			return
 		_:
 			pass
 	match _demo_step % 8:
@@ -1759,7 +1785,7 @@ func _start_fight() -> void:
 	t.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.25).set_trans(Tween.TRANS_BACK)
 	t.tween_interval(0.5)
 	t.tween_property(ko_banner, "modulate:a", 0.0, 0.35)
-	if _gimmick() in ["throw", "objects"]:
+	if _gimmick() in ["throw", "objects", "bridge", "car", "moon"]:
 		_prompt.visible = false
 		_say(String(_level_cfg().get("line", "")))
 	else:
@@ -1897,13 +1923,20 @@ func _gimmick() -> String:
 
 func _gimmick_uses_rig_body() -> bool:
 	# Modes that drive rig.position themselves must take the body from BossRig.
-	return _gimmick() == "throw"
+	return _gimmick() in ["throw", "bridge", "moon"]
 
 func _start_gimmick() -> void:
 	_boss_at = Vector2.ZERO
 	_boss_vel = Vector2.ZERO
 	_spin = 0.0
 	_grab = false
+	_teeter = 0.0
+	_teeter_vel = 0.0
+	_fallen = false
+	_moon_stage = 0
+	_moon_flying = false
+	_moon_sweep = 0.0
+	_car_busy = false
 	if rig_anim != null:
 		rig_anim.own_body = not _gimmick_uses_rig_body()
 
@@ -1912,6 +1945,10 @@ func _update_gimmick(delta: float) -> void:
 	match _gimmick():
 		"throw":
 			_update_throw(delta)
+		"bridge":
+			_update_bridge(delta)
+		"moon":
+			_update_moon(delta)
 		_:
 			pass
 
@@ -2019,3 +2056,175 @@ func _prop_hit(at: Vector2) -> void:
 	_apply_damage(at, 7.0 if head_hit else 5.0, head_hit)
 	if hp <= 0.0:
 		_knockout()
+
+# --- gimmick: bridge push ----------------------------------------------------
+# He teeters on the edge. Shove him with taps; he fights back toward balance.
+# Tip him past the point of no return and he goes over.
+var _teeter: float = 0.0        # -1 .. 1, past |1| he falls
+var _teeter_vel: float = 0.0
+var _fallen: bool = false
+
+func _update_bridge(delta: float) -> void:
+	if _fallen:
+		return
+	# He constantly claws back toward upright - that's the tension.
+	_teeter_vel -= _teeter * 2.2 * delta
+	_teeter_vel *= 0.985
+	_teeter += _teeter_vel * delta
+	if absf(_teeter) >= 1.0:
+		_fallen = true
+		_bridge_fall()
+		return
+	rig_anim.lean = _teeter * 0.55
+	rig.position = Vector2(_teeter * 260.0, absf(_teeter) * 40.0)
+	_prompt.visible = absf(_teeter) > 0.55
+
+func _bridge_push(pos: Vector2) -> void:
+	var r := (boss as Control).get_global_rect().grow(80.0)
+	if not r.has_point(pos):
+		return
+	var from_left := pos.x < r.position.x + r.size.x * 0.5
+	_teeter_vel += (1.55 if from_left else -1.55)
+	_punch_player.pitch_scale = clampf(1.0 + absf(_teeter) * 0.6, 0.9, 1.9)
+	_punch_player.play()
+	_shake(8.0, 0.16)
+	rig_anim.stagger(from_left, 0.6)
+	_spawn_text(_text_anchor(from_left), "SHOVE!", 64, Color(1, 0.86, 0.16))
+	_apply_damage(r.position + r.size * 0.5, 3.0, false)
+	if randf() < 0.4:
+		_say_line("bridge", Dia.BRIDGE)
+
+func _bridge_fall() -> void:
+	_say(_line("bridge", Dia.BRIDGE))
+	rig_anim.own_body = false
+	rig_anim.idle_enabled = false
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(rig, "position", Vector2(_teeter * 340.0, 2200.0), 1.0) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(rig, "rotation", signf(_teeter) * 4.0, 1.0)
+	_shake(20.0, 0.5)
+	_set_hp(0.0)
+	await tw.finished
+	_knockout()
+
+# --- gimmick: car ------------------------------------------------------------
+# Drive at him. Tap to accelerate the car in from the side; time it so he's in
+# the road rather than mid-dodge.
+var _car: Sprite2D
+var _car_busy: bool = false
+
+func _car_run(_pos: Vector2) -> void:
+	if _car_busy:
+		return
+	_car_busy = true
+	if _car == null:
+		_car = Sprite2D.new()
+		_car.texture = load("res://assets/boss2/props/keyboard.png")   # stand-in body
+		_car.scale = Vector2(3.4, 2.0)
+		_car.z_index = 85
+		add_child(_car)
+	var from_left := randf() < 0.5
+	_car.position = Vector2(-400.0 if from_left else 2320.0, 900.0)
+	_car.visible = true
+	var tw := create_tween()
+	tw.tween_property(_car, "position:x", 2320.0 if from_left else -400.0, 0.85) \
+		.set_trans(Tween.TRANS_QUAD)
+	# Impact when it reaches him.
+	var hit := create_tween()
+	hit.tween_interval(0.36)
+	hit.tween_callback(func() -> void:
+		var r := (boss as Control).get_global_rect()
+		var at := r.position + r.size * 0.5
+		_flash_screen(0.4)
+		_shake(28.0, 0.4)
+		_hitstop(0.06)
+		_spawn_stars(at, 12)
+		_spawn_text(at + Vector2(0, -180), "HONK!", 96, Color(1, 0.3, 0.25))
+		rig_anim.spin_body(2)
+		rig_anim.squash(1.3)
+		_say_line("car", Dia.CAR)
+		_apply_damage(at, 16.0, true)
+		if hp <= 0.0:
+			_knockout())
+	await tw.finished
+	_car.visible = false
+	_car_busy = false
+
+# --- gimmick: moon -----------------------------------------------------------
+# A launch-angle / power minigame. A meter sweeps; tap to lock angle, tap again
+# to lock power, and he flies. Farther is better.
+var _moon_stage: int = 0        # 0 idle, 1 picking angle, 2 picking power
+var _moon_angle: float = 0.0
+var _moon_power: float = 0.0
+var _moon_sweep: float = 0.0
+var _moon_flying: bool = false
+var _moon_best: float = 0.0
+
+func _update_moon(delta: float) -> void:
+	if _moon_flying:
+		_boss_vel.y += 900.0 * delta
+		_boss_at += _boss_vel * delta
+		_spin += 5.0 * delta
+		rig.position = _boss_at
+		rig.rotation = _spin
+		if _boss_at.y > 400.0 or _boss_at.x > 2600.0:
+			_moon_land()
+		return
+	_moon_sweep += delta * 2.4
+	match _moon_stage:
+		0:
+			_moon_stage = 1
+		1:
+			_moon_angle = 0.5 + 0.5 * sin(_moon_sweep * 1.6)      # 0..1
+			rig_anim.lean = -_moon_angle * 0.5
+		2:
+			_moon_power = 0.5 + 0.5 * sin(_moon_sweep * 3.2)
+			rig_anim.body_scale = Vector2(_moon_power * 0.12, -_moon_power * 0.12)
+	_prompt.visible = true
+	_prompt.text = "TAP: ANGLE" if _moon_stage == 1 else "TAP: POWER"
+
+func _moon_tap() -> void:
+	if _moon_flying:
+		return
+	if _moon_stage == 1:
+		_moon_stage = 2
+		_moon_sweep = 0.0
+	elif _moon_stage == 2:
+		_moon_launch()
+
+func _moon_launch() -> void:
+	_moon_flying = true
+	_prompt.visible = false
+	rig_anim.own_body = false
+	rig_anim.idle_enabled = false
+	var ang := lerpf(-1.35, -0.35, _moon_angle)       # radians, up and to the right
+	var spd := lerpf(900.0, 2600.0, _moon_power)
+	_boss_at = Vector2.ZERO
+	_boss_vel = Vector2(cos(ang), sin(ang)) * spd
+	_ko_player.play()
+	_flash_screen(0.5)
+	_shake(26.0, 0.4)
+	_say_line("moon", Dia.MOON, true)
+	_spawn_text(Vector2(960.0, 340.0), "LAUNCH!", 120, Color(1, 0.86, 0.16))
+
+func _moon_land() -> void:
+	_moon_flying = false
+	var dist := maxf(0.0, _boss_at.x) / 100.0
+	_moon_best = maxf(_moon_best, dist)
+	_add_score(int(dist * 40.0), Vector2(960.0, 420.0))
+	_spawn_text(Vector2(960.0, 300.0), "%.0f m" % dist, 110, Color(1, 0.86, 0.16))
+	_apply_damage(Vector2(960.0, 420.0), 22.0 + dist * 0.6, true)
+	if hp <= 0.0:
+		_knockout()
+		return
+	# Reset for another shot.
+	_boss_at = Vector2.ZERO
+	_boss_vel = Vector2.ZERO
+	_spin = 0.0
+	rig.position = Vector2.ZERO
+	rig.rotation = 0.0
+	rig_anim.own_body = false
+	rig_anim.idle_enabled = true
+	_moon_stage = 1
+	_moon_sweep = 0.0
