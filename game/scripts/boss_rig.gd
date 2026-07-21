@@ -221,6 +221,12 @@ func _tw_pos(key: String, to: Vector2, dur: float) -> void:
 
 
 # Drive several bones to a pose over `dur`, then optionally spring home.
+#
+# Cartoon timing (Tom & Jerry / Looney Tunes school, per the Big Boy Boxing
+# research): SNAP to the extreme in 2-3 frames with a hard-decelerating ease so
+# it reads as a decisive hit rather than a smooth glide, HOLD the extreme for
+# readability, then snap back with a small overshoot. Minimal in-between. The
+# approach uses TRANS_EXPO EASE_OUT (was TRANS_BACK, which crept in smoothly).
 func pose(map: Dictionary, dur: float, hold: float = 0.0, ret: float = 0.0) -> void:
 	for key in map.keys():
 		if not _rot.has(key):
@@ -228,11 +234,25 @@ func pose(map: Dictionary, dur: float, hold: float = 0.0, ret: float = 0.0) -> v
 		var target: float = map[key]
 		var tw := create_tween()
 		tw.tween_method(func(v: float) -> void: _rot[key] = v, _rot[key], target, dur) \
-			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 		if ret > 0.0:
 			tw.tween_interval(hold)
+			# Short BACK overshoot instead of a long ELASTIC wobble - the wobble
+			# added exactly the in-between frames cartoon timing wants gone.
 			tw.tween_method(func(v: float) -> void: _rot[key] = v, target, 0.0, ret) \
-				.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
+
+# Procedural smear: stretch a limb piece along its swing during the fast frames
+# so a 2-3 frame strike reads as motion-blurred rather than teleporting. Scales
+# the piece up on one axis briefly, then snaps it back to normal.
+func smear(key: String, amount: float, dur: float = 0.06) -> void:
+	if not _scale.has(key):
+		return
+	var tw := create_tween()
+	tw.tween_method(func(v: Vector2) -> void: _scale[key] = v,
+		Vector2.ZERO, Vector2(amount * 0.5, amount), dur * 0.5).set_trans(Tween.TRANS_QUAD)
+	tw.tween_method(func(v: Vector2) -> void: _scale[key] = v,
+		Vector2(amount * 0.5, amount), Vector2.ZERO, dur).set_trans(Tween.TRANS_QUAD)
 
 
 func clear_offsets(dur: float = 0.25) -> void:
@@ -258,23 +278,34 @@ func tell(side_left: bool, dur: float) -> void:
 	var u := "uarmL" if side_left else "uarmR"
 	var f := "farmL" if side_left else "farmR"
 	var s := 1.0 if side_left else -1.0
-	pose({u: -0.9 * s, f: -1.1 * s, "chest": 0.16 * s, "hip": 0.08 * s}, dur)
+	# Deeper anticipation than before: arm cocked further back, a coiling crouch,
+	# and it SETTLES into the extreme and holds there (the hold is what the
+	# player reads). Snap in over the first ~40%, hold for the rest.
+	var snap := dur * 0.4
+	pose({u: -1.15 * s, f: -1.35 * s, "chest": 0.22 * s, "hip": 0.12 * s,
+		"spine": 0.10 * s}, snap)
 	var tb := create_tween()
 	tb.set_parallel(true)
-	tb.tween_property(self, "body_rot", 0.06 * s, dur).set_trans(Tween.TRANS_SINE)
-	tb.tween_property(self, "body_pos", Vector2(18.0 * s, 0.0), dur)
+	tb.tween_property(self, "body_rot", 0.09 * s, snap).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tb.tween_property(self, "body_pos", Vector2(26.0 * s, 14.0), snap) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tb.tween_property(self, "body_scale", Vector2(0.05, -0.05), snap)   # coil/squash
 
 
 func jab(side_left: bool) -> void:
 	var u := "uarmL" if side_left else "uarmR"
 	var f := "farmL" if side_left else "farmR"
 	var s := 1.0 if side_left else -1.0
-	pose({u: 1.35 * s, f: 0.15 * s, "chest": -0.20 * s}, 0.08, 0.05, 0.30)
+	# Explode to the strike in 2 frames, HOLD, snap back. Smear the forearm along
+	# the punch so the fast frames read as motion, not a jump.
+	smear(f, 0.6, 0.07)
+	pose({u: 1.5 * s, f: 0.18 * s, "chest": -0.24 * s}, 0.05, 0.10, 0.16)
 	var tb := create_tween()
-	tb.tween_property(self, "body_pos", Vector2(-46.0 * s, 0.0), 0.08) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.28) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tb.tween_property(self, "body_pos", Vector2(-54.0 * s, 0.0), 0.05) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tb.tween_interval(0.10)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.16) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
 	emit_signal("anim_finished", "jab")
 
 
@@ -282,16 +313,16 @@ func hook(side_left: bool) -> void:
 	var u := "uarmL" if side_left else "uarmR"
 	var f := "farmL" if side_left else "farmR"
 	var s := 1.0 if side_left else -1.0
-	pose({u: 1.9 * s, f: 1.2 * s, "chest": -0.34 * s, "hip": -0.18 * s}, 0.11, 0.06, 0.34)
+	smear(f, 0.75, 0.08)
+	pose({u: 2.1 * s, f: 1.3 * s, "chest": -0.40 * s, "hip": -0.20 * s}, 0.06, 0.11, 0.18)
 	var tb := create_tween()
-	tb.set_parallel(true)
-	tb.tween_property(self, "body_rot", -0.16 * s, 0.11)
-	tb.tween_property(self, "body_pos", Vector2(-38.0 * s, 0.0), 0.11)
+	tb.tween_property(self, "body_rot", -0.20 * s, 0.06).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tb.tween_property(self, "body_pos", Vector2(-44.0 * s, 0.0), 0.06).set_trans(Tween.TRANS_EXPO)
 	var tb2 := create_tween()
 	tb2.set_parallel(true)
 	tb2.tween_interval(0.17)
-	tb2.tween_property(self, "body_rot", 0.0, 0.32).set_trans(Tween.TRANS_ELASTIC)
-	tb2.tween_property(self, "body_pos", Vector2.ZERO, 0.32).set_trans(Tween.TRANS_BACK)
+	tb2.tween_property(self, "body_rot", 0.0, 0.18).set_trans(Tween.TRANS_BACK)
+	tb2.tween_property(self, "body_pos", Vector2.ZERO, 0.18).set_trans(Tween.TRANS_BACK)
 	emit_signal("anim_finished", "hook")
 
 
@@ -299,17 +330,19 @@ func uppercut(side_left: bool) -> void:
 	var u := "uarmL" if side_left else "uarmR"
 	var f := "farmL" if side_left else "farmR"
 	var s := 1.0 if side_left else -1.0
-	# Drops low, then explodes upward.
-	pose({u: -0.5 * s, f: -0.8 * s}, 0.14)
+	# Deep coil down (held), then explode straight up.
+	pose({u: -0.6 * s, f: -0.9 * s, "spine": 0.14}, 0.09, 0.06, 0.0)
 	var crouch := create_tween()
-	crouch.tween_property(self, "body_pos", Vector2(0.0, 46.0), 0.14)
-	crouch.tween_property(self, "body_pos", Vector2(0.0, -30.0), 0.10) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	crouch.tween_property(self, "body_pos", Vector2.ZERO, 0.30).set_trans(Tween.TRANS_BACK)
+	crouch.tween_property(self, "body_pos", Vector2(0.0, 56.0), 0.09).set_trans(Tween.TRANS_QUAD)
+	crouch.tween_interval(0.06)
+	crouch.tween_property(self, "body_pos", Vector2(0.0, -40.0), 0.05) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	crouch.tween_property(self, "body_pos", Vector2.ZERO, 0.20).set_trans(Tween.TRANS_BACK)
 	var t2 := create_tween()
-	t2.tween_interval(0.14)
+	t2.tween_interval(0.15)
 	t2.tween_callback(func() -> void:
-		pose({u: 2.5 * s, f: 0.6 * s, "chest": -0.25 * s}, 0.10, 0.05, 0.34))
+		smear(f, 0.8, 0.08)
+		pose({u: 2.7 * s, f: 0.7 * s, "chest": -0.30 * s}, 0.05, 0.10, 0.18))
 	emit_signal("anim_finished", "uppercut")
 
 
@@ -430,10 +463,16 @@ func knees_buckle(power: float = 1.0) -> void:
 
 # Squash on impact, then overshoot back — the classic cartoon hit accent.
 func squash(power: float = 1.0) -> void:
+	# Hard cartoon squash on impact: flatten HARD in one frame, hold a beat,
+	# rebound past normal, settle. Bigger deform, snappier in, less elastic
+	# jiggle out than before - the impact should hit like an accent, not wobble.
 	var tw := create_tween()
-	tw.tween_property(self, "body_scale", Vector2(0.14 * power, -0.16 * power), 0.05)
-	tw.tween_property(self, "body_scale", Vector2(-0.07 * power, 0.09 * power), 0.09)
-	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.22).set_trans(Tween.TRANS_ELASTIC)
+	tw.tween_property(self, "body_scale", Vector2(0.22 * power, -0.24 * power), 0.03) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.04)
+	tw.tween_property(self, "body_scale", Vector2(-0.11 * power, 0.13 * power), 0.06) \
+		.set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
 
 
 # Full collapse for a KO: folds up and drops.

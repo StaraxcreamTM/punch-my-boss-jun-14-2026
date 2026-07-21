@@ -1600,6 +1600,8 @@ func _setup_shots() -> void:
 		if a.begins_with("--level="):
 			level = clampi(int(a.get_slice("=", 1)), 1, LEVELS.size())
 			print("[shots] level %d (%s)" % [level, _level_cfg().get("gimmick", "punch")])
+	if "--nomenu" in OS.get_cmdline_user_args():
+		_skip_menu = true
 	if "--shots-fast" in OS.get_cmdline_user_args():
 		_shot_interval = 0.09
 		_demo_period = 0.45
@@ -1630,7 +1632,15 @@ func _setup_shots() -> void:
 
 var _tour: int = 0
 
+var _skip_menu := false
+
 func _demo_tour() -> void:
+	if _skip_menu and phase != Phase.FIGHT:
+		if phase == Phase.PREFIGHT:
+			_start_fight()
+		else:
+			_start_prefight()
+		return
 	match phase:
 		Phase.TITLE:
 			open_menu(Phase.MENU)
