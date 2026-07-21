@@ -430,8 +430,11 @@ func _ready() -> void:
 	for b in _buttons.values():
 		_hud_nodes.append(b)
 	counter.text = "SCORE  0"
+	# CLI is a SESSION override, never written to the save. Setting `portrait`
+	# directly here leaked a test-only flag into the user's saved settings and
+	# every later run came up portrait.
 	if "--portrait" in OS.get_cmdline_user_args():
-		portrait = true
+		_force_portrait = true
 	_apply_portrait()
 	apply_look()
 	_build_screens()
@@ -1930,7 +1933,28 @@ func _gimmick_uses_rig_body() -> bool:
 	# Modes that drive rig.position themselves must take the body from BossRig.
 	return _gimmick() in ["throw", "bridge", "moon"]
 
+# Per-level backdrop. The moon shot needs sky, not a cubicle wall - without it
+# the launch reads as "he jumped" rather than "he left the building".
+var _office_tex: Texture2D
+var _office_mat: Material
+
+func _apply_level_scene() -> void:
+	if _office_tex == null:
+		_office_tex = office.texture
+		_office_mat = office.material
+	if _gimmick() == "moon":
+		var sky := "res://assets/boss2/scenes/sky.png"
+		if ResourceLoader.exists(sky):
+			office.texture = load(sky)
+			# The toon posterise/ink pass is tuned for the photo background and
+			# muddies flat art, so drop it for the painted sky.
+			office.material = null
+	else:
+		office.texture = _office_tex
+		office.material = _office_mat
+
 func _start_gimmick() -> void:
+	_apply_level_scene()
 	_boss_at = Vector2.ZERO
 	_boss_vel = Vector2.ZERO
 	_spin = 0.0
@@ -2125,12 +2149,13 @@ func _car_run(_pos: Vector2) -> void:
 	_car_busy = true
 	if _car == null:
 		_car = Sprite2D.new()
-		_car.texture = load("res://assets/boss2/props/keyboard.png")   # stand-in body
-		_car.scale = Vector2(3.4, 2.0)
+		_car.texture = load("res://assets/boss2/scenes/car.png")
 		_car.z_index = 85
 		add_child(_car)
 	var from_left := randf() < 0.5
-	_car.position = Vector2(-400.0 if from_left else 2320.0, 900.0)
+	# The art faces right, so mirror when it comes in from the other side.
+	_car.scale = Vector2(1.9 if from_left else -1.9, 1.9)
+	_car.position = Vector2(-400.0 if from_left else 2320.0, 940.0)
 	_car.visible = true
 	var tw := create_tween()
 	tw.tween_property(_car, "position:x", 2320.0 if from_left else -400.0, 0.85) \
@@ -2245,10 +2270,14 @@ func _moon_land() -> void:
 #
 # What it does: swaps the viewport to 1080x1920, re-anchors the HUD rows,
 # moves the face buttons to a bottom thumb arc, and re-centres the boss.
-var portrait: bool = false
+var portrait: bool = false        # saved preference
+var _force_portrait: bool = false # --portrait, this session only
+
+func is_portrait() -> bool:
+	return portrait or _force_portrait
 
 func _apply_portrait() -> void:
-	if not portrait:
+	if not is_portrait():
 		return
 	var vp := get_window()
 	vp.content_scale_size = Vector2i(1080, 1920)
