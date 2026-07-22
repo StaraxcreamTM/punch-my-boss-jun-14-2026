@@ -155,3 +155,22 @@ assess that one concretely rather than in the abstract.
 
 Steps 1 and 2 are the difference between a demo and a product. Everything else
 is polish on top of that.
+
+## 11. Future combat mechanics (from the Big Boy Boxing study)
+
+These raise the skill ceiling and give the high-risk/high-reward loop that
+carries a paid boxing-like. Noted here for a later pass:
+
+- **Parry** — a tight-timing tap (vs. the forgiving holdable dodge) that, hit on
+  the strike frame, staggers the boss into an extended punish window instead of
+  just avoiding damage. High risk (miss = you eat it), high reward. Slots into
+  the existing `_resolve_attack` timing check.
+- **Adrenaline / rush meter** — builds on parries and clean dodges, spends on a
+  brief damage-and-speed surge (distinct from the current FRENZY, which builds
+  on landing hits). Rewards aggressive precise play.
+- **Per-boss secret mechanic** — one hidden interaction per boss for the
+  community to discover (Big Boy Boxing shipped these per fight). Cheap to add
+  one-off, strong word-of-mouth hook.
+
+Already shipped from that study: cartoon snap-hold timing, impact smears/squash,
+holdable dodges, and the 50%-HP enrage transformation (prototype on levels 3-4).

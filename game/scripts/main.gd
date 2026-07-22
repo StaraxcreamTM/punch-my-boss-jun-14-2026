@@ -193,6 +193,10 @@ var _dodge_time: float = 0.0
 var _dodge_dir: int = 0       # -1 left, +1 right, 0 duck
 var _dodge_holding: bool = false
 const DODGE_WINDOW := 0.40
+
+# Mid-fight transformation: at 50% HP an enrage-flagged boss speeds up, scowls
+# permanently and hits harder. Prototype phase-change (Big Boy Boxing style).
+var _enraged: bool = false
 var _player_bar: Panel
 
 # --- levels ----------------------------------------------------------------
@@ -206,8 +210,10 @@ const LEVELS := [
 	{"name": "Performance Review", "hp": 170.0, "pace": 1.1, "dmg": 11.0, "gimmick": "feint",
 	 "line": "I've prepared some feedback. It's mostly negative."},
 	{"name": "The Reorg", "hp": 230.0, "pace": 0.9, "dmg": 14.0, "gimmick": "double",
+	 "enrage": true,
 	 "line": "We're restructuring. You're the structure being restructured."},
 	{"name": "Crunch Season", "hp": 300.0, "pace": 0.75, "dmg": 17.0, "gimmick": "rage",
+	 "enrage": true,
 	 "line": "Weekend's cancelled. So is your lunch. And your dignity."},
 	{"name": "Team Building", "hp": 260.0, "pace": 1.2, "dmg": 0.0, "gimmick": "throw",
 	 "line": "Trust fall! You catch me, right? ...Right?"},
@@ -1031,11 +1037,32 @@ func _windup_dur() -> float:
 	# Later levels telegraph faster, so the dodge window tightens.
 	return maxf(0.22, WINDUP_DUR - float(level - 1) * 0.05)
 
+# The 50%-HP transformation. A held dramatic beat, then he's permanently angrier
+# for the rest of the fight: faster guard cycles and a locked-on scowl.
+func _boss_enrage() -> void:
+	_enraged = true
+	_hitstop(0.14)
+	_flash_screen(0.6)
+	_shake(24.0, 0.6)
+	_buzz(60)
+	_spawn_text(Vector2(960.0, 300.0), "ENOUGH!!", 130, Color(1, 0.24, 0.14))
+	_say("You know what? I've HAD it with you.")
+	if rig_anim != null:
+		rig_anim.spin_body(1)
+		rig_anim.idle_amp = 1.7        # visibly more agitated idle
+	# Lock a scowl on for characters that have one; others just seethe via bones.
+	if not _angry_faces.is_empty():
+		_react_tex = _angry_faces[randi() % _angry_faces.size()]
+		_react_time = 999.0            # held until the next reaction overrides it
+
 func _enter_guard() -> void:
 	_state = BossState.GUARD
-	_state_time = randf_range(2.6, 4.2) * _level_cfg().get("pace", 1.0)
+	# Enraged: attacks come ~40% faster (shorter guard gaps).
+	var pace := float(_level_cfg().get("pace", 1.0)) * (0.6 if _enraged else 1.0)
+	_state_time = randf_range(2.6, 4.2) * pace
 	_prompt.visible = false
-	boss.modulate = Color(1, 1, 1)
+	# A permanent angry flush while enraged.
+	boss.modulate = Color(1.0, 0.86, 0.82) if _enraged else Color(1, 1, 1)
 	if has_pose("guard"):
 		set_pose("guard")
 	elif rig_anim != null and difficulty != Difficulty.BAG:
@@ -1403,6 +1430,11 @@ func _set_hp(v: float) -> void:
 	hp = clampf(v, 0.0, hp_max)
 	ko_fill.anchor_right = hp / hp_max
 	ko_fill.offset_right = 0.0
+	# Phase change: at half health an enrage-flagged boss "loses it". Only in a
+	# real fight, once, and only on the way DOWN (not when HP is being reset).
+	if not _enraged and phase == Phase.FIGHT and hp > 0.0 and hp <= hp_max * 0.5 \
+			and bool(_level_cfg().get("enrage", false)):
+		_boss_enrage()
 
 # --- layout helpers ---
 
@@ -2041,8 +2073,10 @@ func _start_fight() -> void:
 	combo = 0
 	frenzy = 0.0
 	_koing = false
+	_enraged = false
 	if rig_anim != null:
 		rig_anim.revive()
+		rig_anim.idle_amp = 1.0
 	_start_gimmick()
 	ko_banner.text = "FIGHT!"
 	ko_banner.pivot_offset = ko_banner.size / 2.0
