@@ -203,6 +203,14 @@ var player_hp: float = 100.0
 var _dodge_time: float = 0.0
 var _dodge_dir: int = 0       # -1 left, +1 right, 0 duck
 var _dodge_holding: bool = false
+# Parry: a tight counter window, and the adrenaline it feeds. Spend a full
+# adrenaline meter on a super punch.
+var _parry_time: float = 0.0
+const PARRY_WINDOW := 0.18
+var adrenaline: float = 0.0
+const ADREN_MAX := 100.0
+var _adren_bar: Panel
+var _adren_label: Label
 const DODGE_WINDOW := 0.40
 
 # Mid-fight transformation: at 50% HP an enrage-flagged boss speeds up, scowls
@@ -762,6 +770,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_1: _pick_difficulty(Difficulty.BAG)
 				KEY_2: _pick_difficulty(Difficulty.DEFENSIVE)
 				KEY_3: _pick_difficulty(Difficulty.BRAWLER)
+				KEY_UP: _parry()
+				KEY_SHIFT: _super_punch()
 				KEY_SPACE, KEY_ENTER: _advance_screen()
 	elif event is InputEventJoypadButton:
 		match event.button_index:
@@ -777,6 +787,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				JOY_BUTTON_B: _press("B")
 				JOY_BUTTON_X: _press("X")
 				JOY_BUTTON_Y: _press("Y")
+				JOY_BUTTON_RIGHT_SHOULDER: _parry()
+				JOY_BUTTON_LEFT_SHOULDER: _super_punch()
 	elif event is InputEventMouseButton:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -1116,6 +1128,8 @@ func _update_fight(delta: float) -> void:
 		_dodge_time = DODGE_WINDOW
 	elif _dodge_time > 0.0:
 		_dodge_time -= delta
+	if _parry_time > 0.0:
+		_parry_time -= delta
 	match _state:
 		BossState.GUARD:
 			if _state_time <= 0.0:
@@ -1259,6 +1273,25 @@ func _enter_attack() -> void:
 # Did the player dodge in time? A dodge in any direction beats a jab/hook; the
 # uppercut has to be dodged sideways (ducking into it is exactly wrong).
 func _resolve_attack() -> void:
+	# Parry first: a tight-window counter (much tighter than the forgiving
+	# holdable dodge). Land it on the strike frame and the boss is staggered wide
+	# open and you bank adrenaline - high risk, high reward.
+	if _parry_time > 0.0:
+		_atk_whiffed = true
+		_parry_time = 0.0
+		_spawn_text(Vector2(960.0, 380.0), "PARRY!", 96, Color(0.4, 0.9, 1.0))
+		_flash_screen(0.5)
+		_shake(14.0, 0.3)
+		_hitstop(0.07)
+		if _block_player != null:
+			_block_player.pitch_scale = 1.4
+			_block_player.play()
+		if rig_anim != null:
+			rig_anim.stagger(_atk_side, 1.2)
+			rig_anim.knees_buckle(0.8)
+		_add_adrenaline(34.0)
+		_enter_stunned(1.6)      # extended punish window
+		return
 	var dodged := _dodge_time > 0.0
 	# Attack-specific dodge rules, so reading WHICH attack matters:
 	#   uppercut  - ducking into it is exactly wrong
@@ -2014,6 +2047,11 @@ func _demo_tick() -> void:
 			return
 		_:
 			pass
+	# Occasionally parry and fire a super, to exercise those paths.
+	if _demo_step % 5 == 0:
+		_parry()
+	if adrenaline >= ADREN_MAX:
+		_super_punch()
 	match _demo_step % 8:
 		1, 2:
 			_punch(_demo_step % 2 == 0, true)    # head
@@ -2386,6 +2424,17 @@ func _start_fight() -> void:
 	if _noise_bar != null:
 		_update_noise_bar()
 	_set_noise_visible(_has_shush())
+	_build_adren_meter()
+	adrenaline = 0.0
+	_parry_time = 0.0
+	_update_adren_bar()
+	# The parry/adrenaline layer only makes sense when the boss actually
+	# attacks, so it shows on Brawler punch fights.
+	var show_adren := difficulty == Difficulty.BRAWLER and _gimmick() == "punch"
+	if _adren_bar != null:
+		_adren_bar.get_parent().visible = show_adren
+	if _adren_label != null:
+		_adren_label.visible = show_adren
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.idle_amp = 1.0
@@ -4257,3 +4306,80 @@ func _librarian_shush() -> void:
 	_set_player_hp(player_hp)
 	if player_hp <= 0.0:
 		_game_over()
+
+# --- parry + adrenaline + super ---------------------------------------------
+func _parry() -> void:
+	if _koing or phase != Phase.FIGHT:
+		return
+	_parry_time = PARRY_WINDOW
+	# A quick flash of the guard pose reads as the attempt.
+	if rig_anim != null:
+		rig_anim.body_scale = Vector2(0.06, 0.06)
+		var tw := create_tween()
+		tw.tween_property(rig_anim, "body_scale", Vector2.ZERO, 0.16)
+	if _dodge_player != null:
+		_dodge_player.pitch_scale = 1.5
+		_dodge_player.play()
+
+func _add_adrenaline(amount: float) -> void:
+	adrenaline = clampf(adrenaline + amount, 0.0, ADREN_MAX)
+	_update_adren_bar()
+	if adrenaline >= ADREN_MAX:
+		_spawn_text(Vector2(960.0, 560.0), "SUPER READY!", 64, Color(1, 0.85, 0.2))
+
+func _update_adren_bar() -> void:
+	if _adren_bar != null:
+		_adren_bar.anchor_right = adrenaline / ADREN_MAX
+		_adren_bar.offset_right = 0.0
+
+func _build_adren_meter() -> void:
+	if _adren_bar != null:
+		return
+	var track := Panel.new()
+	track.anchor_top = 1.0
+	track.anchor_bottom = 1.0
+	track.offset_left = 30.0
+	track.offset_right = 460.0
+	track.offset_top = -60.0
+	track.offset_bottom = -30.0
+	track.z_index = 41
+	track.add_theme_stylebox_override("panel", (ko_fill.get_parent() as Panel).get_theme_stylebox("panel"))
+	safe.add_child(track)
+	_adren_bar = Panel.new()
+	_adren_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_adren_bar.anchor_right = 0.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1.0, 0.75, 0.15)
+	sb.set_corner_radius_all(11)
+	_adren_bar.add_theme_stylebox_override("panel", sb)
+	track.add_child(_adren_bar)
+	_adren_label = Label.new()
+	_adren_label.text = "ADRENALINE  (^ parry to build, shift = super)"
+	_adren_label.add_theme_font_size_override("font_size", 20)
+	_adren_label.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	_adren_label.add_theme_constant_override("outline_size", 6)
+	_adren_label.anchor_top = 1.0
+	_adren_label.anchor_bottom = 1.0
+	_adren_label.offset_left = 34.0
+	_adren_label.offset_top = -92.0
+	safe.add_child(_adren_label)
+
+# Spend a full meter on a super punch: a huge guaranteed crit with big juice.
+func _super_punch() -> void:
+	if adrenaline < ADREN_MAX or _koing or phase != Phase.FIGHT:
+		return
+	adrenaline = 0.0
+	_update_adren_bar()
+	_flash_screen(0.8)
+	_shake(30.0, 0.5)
+	_zoom_punch(0.12)
+	_spawn_text(Vector2(960.0, 300.0), "HAYMAKER!", 130, Color(1, 0.3, 0.2))
+	var at: Vector2 = boss.get_global_transform() * (boss.size * 0.5)
+	if rig_anim != null:
+		rig_anim.head_spin(4)
+		rig_anim.knees_buckle(1.2)
+	_crit_player.play()
+	# Big fixed damage that ignores the guard state.
+	_apply_damage(at, 55.0, true)
+	if hp <= 0.0:
+		_knockout()
