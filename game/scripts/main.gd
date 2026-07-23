@@ -144,6 +144,17 @@ var _clock: float = 0.0
 var _punch_player: AudioStreamPlayer
 var _ko_player: AudioStreamPlayer
 var _music_player: AudioStreamPlayer
+var _whiff_player: AudioStreamPlayer
+var _block_player: AudioStreamPlayer
+var _dodge_player: AudioStreamPlayer
+var _crowd_player: AudioStreamPlayer
+
+func _add_sfx(stream: AudioStreamWAV, vol_db: float) -> AudioStreamPlayer:
+	var p := AudioStreamPlayer.new()
+	p.stream = stream
+	p.volume_db = vol_db
+	add_child(p)
+	return p
 var _music_btn: Button
 var music_on: bool = true
 # Haptics. MAKE-IT-SELLABLE calls this the single biggest feel gap on mobile:
@@ -387,6 +398,10 @@ func _ready() -> void:
 	_ko_player = AudioStreamPlayer.new()
 	_ko_player.stream = _make_ko()
 	add_child(_ko_player)
+	_whiff_player = _add_sfx(_make_whiff(), -6.0)
+	_block_player = _add_sfx(_make_block(), -3.0)
+	_dodge_player = _add_sfx(_make_dodge(), -7.0)
+	_crowd_player = _add_sfx(_make_crowd(), -10.0)
 	_setup_music()
 
 	# Music toggle, top-right. Also on the M key.
@@ -826,6 +841,9 @@ func _throw_whiff(pos: Vector2, side_left: bool) -> void:
 	tw.tween_property(f, "modulate:a", 0.0, 0.14)
 	tw.tween_callback(f.queue_free)
 	_spawn_text(pos + Vector2(0, -60), "whiff", 34, Color(0.82, 0.84, 0.9))
+	if _whiff_player != null:
+		_whiff_player.pitch_scale = randf_range(0.9, 1.1)
+		_whiff_player.play()
 	if randf() < 0.35:
 		_say_line("miss", Dia.MISS)
 
@@ -1158,6 +1176,8 @@ func _boss_enrage() -> void:
 	_shake(24.0, 0.6)
 	_buzz(60)
 	_spawn_text(Vector2(960.0, 300.0), "ENOUGH!!", 130, Color(1, 0.24, 0.14))
+	if _crowd_player != null:
+		_crowd_player.play()
 	_say("You know what? I've HAD it with you.")
 	if rig_anim != null:
 		rig_anim.spin_body(1)
@@ -1179,6 +1199,8 @@ func _enter_guard() -> void:
 		set_pose("guard")
 	elif rig_anim != null and difficulty != Difficulty.BAG:
 		rig_anim.block()
+		if _block_player != null:
+			_block_player.play()
 
 func _enter_windup() -> void:
 	_state = BossState.WINDUP
@@ -1283,6 +1305,9 @@ func _dodge_press(dir: int) -> void:
 	_dodge_holding = true
 	_dodge_dir = dir
 	_dodge_time = DODGE_WINDOW
+	if _dodge_player != null:
+		_dodge_player.pitch_scale = randf_range(0.95, 1.2)
+		_dodge_player.play()
 	if rig_anim != null:
 		rig_anim.dodge_hold(dir)
 	# Camera leans opposite so it reads as the player slipping.
@@ -1370,6 +1395,8 @@ func _knockout() -> void:
 	_prompt.visible = false
 	boss.modulate = Color(1, 1, 1)
 	_ko_player.play()
+	if _crowd_player != null:
+		_crowd_player.play()
 	_flash_screen(0.85)
 	_shake(42.0, 0.7)
 	_zoom_punch(0.1)
@@ -1761,6 +1788,72 @@ func _wav(data: PackedByteArray, rate: int) -> AudioStreamWAV:
 	wav.stereo = false
 	wav.data = data
 	return wav
+
+# Whiff: a short filtered-noise whoosh with a falling pitch - a swing through air.
+func _make_whiff() -> AudioStreamWAV:
+	var rate := 44100
+	var dur := 0.18
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var last := 0.0
+	for i in n:
+		var t := float(i) / rate
+		var env := sin(PI * clampf(t / dur, 0.0, 1.0))     # swell in and out
+		var nz := randf() * 2.0 - 1.0
+		# One-pole low-pass whose cutoff falls, so the whoosh darkens.
+		var k := lerpf(0.5, 0.08, t / dur)
+		last = last + k * (nz - last)
+		data.encode_s16(i * 2, int(clampf(last * env * 0.5, -1.0, 1.0) * 32767.0))
+	return _wav(data, rate)
+
+# Block: a dull wooden thud - two fast low sine clicks.
+func _make_block() -> AudioStreamWAV:
+	var rate := 44100
+	var dur := 0.12
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	for i in n:
+		var t := float(i) / rate
+		var env := exp(-t * 40.0) + exp(-maxf(0.0, t - 0.05) * 40.0) * 0.6
+		var s := sin(TAU * 120.0 * t) * env * 0.55
+		s += (randf() * 2.0 - 1.0) * exp(-t * 80.0) * 0.2
+		data.encode_s16(i * 2, int(clampf(s, -1.0, 1.0) * 32767.0))
+	return _wav(data, rate)
+
+# Dodge: a quick rising "swish".
+func _make_dodge() -> AudioStreamWAV:
+	var rate := 44100
+	var dur := 0.14
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var last := 0.0
+	for i in n:
+		var t := float(i) / rate
+		var env := exp(-t * 10.0)
+		var nz := randf() * 2.0 - 1.0
+		var k := lerpf(0.10, 0.6, t / dur)   # cutoff RISES -> brighter swish
+		last = last + k * (nz - last)
+		data.encode_s16(i * 2, int(clampf(last * env * 0.45, -1.0, 1.0) * 32767.0))
+	return _wav(data, rate)
+
+# Crowd "oooh" - a soft filtered-noise swell, like a reacting office.
+func _make_crowd() -> AudioStreamWAV:
+	var rate := 44100
+	var dur := 0.8
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	for i in n:
+		var t := float(i) / rate
+		var env := sin(PI * clampf(t / dur, 0.0, 1.0))
+		# A vowel-ish "ooh": low formants around 300/600 Hz plus air.
+		var s := sin(TAU * 300.0 * t) * 0.4 + sin(TAU * 600.0 * t) * 0.2
+		s += (randf() * 2.0 - 1.0) * 0.15
+		data.encode_s16(i * 2, int(clampf(s * env * 0.4, -1.0, 1.0) * 32767.0))
+	return _wav(data, rate)
 
 # --- debug: self-serve visual verification ----------------------------------
 # Run with:  Godot --path game -- --shots
