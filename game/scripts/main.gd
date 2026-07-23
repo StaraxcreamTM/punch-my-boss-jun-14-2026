@@ -119,6 +119,15 @@ var stat_best_combo: int = 0
 var stat_worst_day: int = 0        # most damage dealt to a boss in one fight
 var _fight_damage: int = 0         # running damage this fight, for worst_day
 var stat_endless_best: int = 0     # furthest round reached in Endless mode
+# --- adaptive difficulty (the "smarter boss") ---
+# A rolling read of how the player is coping THIS fight: nudged up on a dodge or
+# parry, down when they eat a punch. It shortens the boss's tell and quickens his
+# attacks when you're dominating, and eases both when you're struggling - kept
+# in a tight band so it's felt as "he adapts", not as rubber-banding. Only on
+# Brawler (the mode where he actually attacks). Seeded from a persisted baseline
+# so a returning veteran isn't re-taught from scratch every session.
+var _skill: float = 0.5
+var adapt_baseline: float = 0.5    # persisted long-term skill estimate
 # --- endless / survival mode ---
 var _endless: bool = false
 var _endless_round: int = 0
@@ -1214,9 +1223,32 @@ func _update_fight(delta: float) -> void:
 		rig_anim.lean = lean
 	boss.modulate = tint
 
+# Adaptive only kicks in when the boss actually fights back.
+func _adaptive_on() -> bool:
+	return difficulty == Difficulty.BRAWLER
+
+# Push the skill read toward a target by a step, clamped to [0,1].
+func _nudge_skill(delta: float) -> void:
+	if not _adaptive_on():
+		return
+	_skill = clampf(_skill + delta, 0.0, 1.0)
+
+# 1.0 at neutral skill; <1 (faster/shorter) as the player dominates, >1 as they
+# struggle. Tight band so the effect is fair, not swingy.
+func _adapt_tell() -> float:
+	if not _adaptive_on():
+		return 1.0
+	return lerpf(1.15, 0.80, _skill)
+
+func _adapt_pace() -> float:
+	if not _adaptive_on():
+		return 1.0
+	return lerpf(1.20, 0.82, _skill)
+
 func _windup_dur() -> float:
-	# Later levels telegraph faster, so the dodge window tightens.
-	return maxf(0.22, WINDUP_DUR - float(level - 1) * 0.05)
+	# Later levels telegraph faster, so the dodge window tightens; adaptive then
+	# shortens it further for a dominating player (or eases it for a struggling one).
+	return maxf(0.20, (WINDUP_DUR - float(level - 1) * 0.05) * _adapt_tell())
 
 # The 50%-HP transformation. A held dramatic beat, then he's permanently angrier
 # for the rest of the fight: faster guard cycles and a locked-on scowl.
@@ -1240,8 +1272,9 @@ func _boss_enrage() -> void:
 
 func _enter_guard() -> void:
 	_state = BossState.GUARD
-	# Enraged: attacks come ~40% faster (shorter guard gaps).
-	var pace := float(_level_cfg().get("pace", 1.0)) * (0.6 if _enraged else 1.0)
+	# Enraged: attacks come ~40% faster (shorter guard gaps). Adaptive tightens or
+	# loosens the gap based on how the player is coping.
+	var pace := float(_level_cfg().get("pace", 1.0)) * (0.6 if _enraged else 1.0) * _adapt_pace()
 	_state_time = randf_range(2.6, 4.2) * pace
 	_prompt.visible = false
 	# A permanent angry flush while enraged.
@@ -1325,6 +1358,7 @@ func _resolve_attack() -> void:
 			rig_anim.stagger(_atk_side, 1.2)
 			rig_anim.knees_buckle(0.8)
 		_add_adrenaline(34.0)
+		_nudge_skill(0.10)       # clean parry: he's read
 		_enter_stunned(1.6)      # extended punish window
 		return
 	var dodged := _dodge_time > 0.0
@@ -1343,6 +1377,7 @@ func _resolve_attack() -> void:
 		_atk_whiffed = true
 		_spawn_text(_text_anchor(not _atk_side), "MISS!", 72, Color(0.6, 1.0, 0.7))
 		_shake(6.0, 0.18)
+		_nudge_skill(0.06)       # read the tell, slipped it
 		if rig_anim != null:
 			rig_anim.body_pos = Vector2(0, 0)
 	else:
@@ -1350,6 +1385,7 @@ func _resolve_attack() -> void:
 
 func _hit_player() -> void:
 	_buzz(80)
+	_nudge_skill(-0.12)          # ate it: ease off
 	_hits_this_fight += 1        # a landed boss punch: no longer flawless
 	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0) * _dmg_mul)
 	_flash_screen(0.42)
@@ -2357,6 +2393,7 @@ func _load_prefs() -> void:
 	stat_best_combo = int(cfg.get_value("stats", "best_combo", 0))
 	stat_worst_day = int(cfg.get_value("stats", "worst_day", 0))
 	stat_endless_best = int(cfg.get_value("stats", "endless_best", 0))
+	adapt_baseline = clampf(float(cfg.get_value("settings", "adapt", 0.5)), 0.0, 1.0)
 	_crit_total = int(cfg.get_value("stats", "crits", 0))
 	awards_earned.clear()
 	for id in cfg.get_value("awards", "earned", []):
@@ -2386,6 +2423,7 @@ func _save_prefs() -> void:
 	cfg.set_value("stats", "best_combo", stat_best_combo)
 	cfg.set_value("stats", "worst_day", stat_worst_day)
 	cfg.set_value("stats", "endless_best", stat_endless_best)
+	cfg.set_value("settings", "adapt", adapt_baseline)
 	cfg.set_value("stats", "crits", _crit_total)
 	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
@@ -2564,6 +2602,7 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 	_enraged = false
 	_hits_this_fight = 0
 	_fight_damage = 0
+	_skill = adapt_baseline      # adaptive difficulty starts from the learned baseline
 	_reset_hazard()
 	_reset_counter()
 	_setup_pump()
@@ -2623,6 +2662,9 @@ func _show_gameover(won: bool) -> void:
 	_endless = false
 	_hp_mul = 1.0
 	_dmg_mul = 1.0
+	# Fold this fight's skill read into the long-term baseline (Brawler only).
+	if _adaptive_on():
+		adapt_baseline = clampf(lerpf(adapt_baseline, _skill, 0.3), 0.0, 1.0)
 	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)

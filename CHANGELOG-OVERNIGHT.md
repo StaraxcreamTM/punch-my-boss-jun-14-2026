@@ -376,3 +376,14 @@ TO MENU, and it freezes the tree (get_tree().paused) so the fight actually
 stops. The overlay processes in PROCESS_MODE_ALWAYS so its buttons work while
 everything else is frozen; Quit also clears any Endless scaling. Filmstrip-
 verified the overlay renders over a dimmed fight; headless parse clean.
+
+## v0.69 — adaptive difficulty (the "smarter boss", §9A)
+
+A rolling per-fight read of how the player is coping: +0.10 on a parry, +0.06 on
+a dodge, -0.12 on eating a punch (clamped 0..1). High skill shortens the boss's
+tell (x0.80) and quickens his attacks (x0.82); low skill eases both (x1.15 /
+x1.20). Deliberately a tight band so it reads as "he adapts", not rubber-banding.
+Brawler-only (the mode where he attacks). Seeded each fight from a persisted
+baseline (settings/adapt) that each Brawler fight folds into at 30%, so a
+returning veteran isn't re-taught from scratch. No dependency, no app-size cost -
+this is what "smarter boss" means in practice. Parse-clean, boots.
