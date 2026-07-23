@@ -267,7 +267,7 @@ const LEVELS := [
 	 "bg": "res://assets/scenes/fast_food.png", "slick": true,
 	 "line": "You want fries with that write-up?"},
 	{"name": "Gas Station", "mood": "heavy", "hp": 250.0, "pace": 1.0, "dmg": 13.0, "gimmick": "punch",
-	 "bg": "res://assets/scenes/gas_station.png",
+	 "bg": "res://assets/scenes/gas_station.png", "pump_zone": true,
 	 "line": "Premium effort? On regular pay? Dream on."},
 	{"name": "Library", "mood": "bright", "hp": 230.0, "pace": 1.1, "dmg": 10.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/library.png", "shush": true,
@@ -827,6 +827,11 @@ func _unhandled_input(event: InputEvent) -> void:
 # damage; clicks in open air still swing (and whiff).
 func _punch_click(pos: Vector2) -> void:
 	if phase != Phase.FIGHT or _koing or _punch_cd > 0.0:
+		return
+	# Gas station: a live fuel pump sits beside the boss. Punch into its zone and
+	# it goes up - big self-damage. You have to aim AROUND it.
+	if _pump_rect != Rect2() and _pump_rect.has_point(pos):
+		_pump_explosion(pos)
 		return
 	_punch_cd = PUNCH_COOLDOWN
 	var boss_rect := (boss as Control).get_global_rect().grow(20.0)
@@ -2434,6 +2439,7 @@ func _start_fight() -> void:
 	_enraged = false
 	_hits_this_fight = 0
 	_reset_hazard()
+	_setup_pump()
 	_build_noise_meter()
 	_noise = 0.0
 	if _noise_bar != null:
@@ -4398,3 +4404,54 @@ func _super_punch() -> void:
 	_apply_damage(at, 55.0, true)
 	if hp <= 0.0:
 		_knockout()
+
+# --- gas station: explosive pump zone ---------------------------------------
+# A fuel pump beside the boss. Its rect is a no-punch zone: hit it and it blows,
+# costing the player health. Forces aimed punches instead of blind mashing.
+var _pump_rect: Rect2 = Rect2()
+var _pump_marker: Control
+
+func _setup_pump() -> void:
+	# Zone in Safe-local coords, off to the boss's right at torso height.
+	if not bool(_level_cfg().get("pump_zone", false)):
+		_pump_rect = Rect2()
+		if _pump_marker != null:
+			_pump_marker.visible = false
+		return
+	_pump_rect = Rect2(1360, 620, 300, 460)
+	if _pump_marker == null:
+		_pump_marker = Panel.new()
+		_pump_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pump_marker.z_index = 24
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.9, 0.15, 0.1, 0.22)
+		sb.border_color = Color(1, 0.3, 0.15, 0.9)
+		sb.set_border_width_all(6)
+		sb.set_corner_radius_all(12)
+		_pump_marker.add_theme_stylebox_override("panel", sb)
+		safe.add_child(_pump_marker)
+		var warn := Label.new()
+		warn.text = "!! PUMP !!\nDON'T HIT"
+		warn.add_theme_font_size_override("font_size", 32)
+		warn.add_theme_color_override("font_color", Color(1, 0.5, 0.2))
+		warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		warn.position = Vector2(30, 30)
+		_pump_marker.add_child(warn)
+	_pump_marker.position = _pump_rect.position
+	_pump_marker.size = _pump_rect.size
+	_pump_marker.visible = true
+
+func _pump_explosion(at: Vector2) -> void:
+	_punch_cd = 0.5
+	_flash_screen(0.9)
+	_shake(40.0, 0.6)
+	_hitstop(0.08)
+	_spawn_text(at + Vector2(0, -80), "KABOOM!", 120, Color(1, 0.5, 0.1))
+	_spawn_stars(at, 16)
+	combo = 0
+	if _ko_player != null:
+		_ko_player.play()
+	player_hp = maxf(0.0, player_hp - 18.0)
+	_set_player_hp(player_hp)
+	if player_hp <= 0.0:
+		_game_over()
