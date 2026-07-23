@@ -2284,8 +2284,39 @@ func _show_title() -> void:
 %d punches thrown   ·   %d damage   ·   %d K.O.s" % [
 			stat_punches, stat_damage, stat_kos]
 	_screen_hint.text = "tap to continue"
+	# The boss glares out from behind the title: lower the dim so he reads, and
+	# put an angry face on if the character has one, plus a slow menacing lean.
+	if _screen_dim != null:
+		_screen_dim.color = Color(0.05, 0.03, 0.08, 0.5)
 	if rig_anim != null:
 		rig_anim.taunt()
+	if not _react.is_empty():
+		_react_tex = _react[_react.size() - 1]
+		_react_time = 999.0        # held glare until the fight starts
+	_title_glare()
+	_pop_screen()
+
+# A slow head-tracking glare + occasional lean-in on the title screen.
+func _title_glare() -> void:
+	if rig_anim == null or phase != Phase.TITLE:
+		return
+	rig_anim.body_rot = 0.0
+	var tw := create_tween()
+	tw.tween_property(rig_anim, "lean", 0.05, 1.2).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(rig_anim, "lean", -0.03, 1.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(_title_glare)      # loops while on the title
+
+# Punchy pop-in for a screen: the title/rows scale up from small with a fade.
+func _pop_screen() -> void:
+	for node in [_screen_title, _screen_sub, _screen_hint]:
+		if node == null:
+			continue
+		node.pivot_offset = node.size / 2.0
+		node.scale = Vector2(0.8, 0.8)
+		node.modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_property(node, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(node, "modulate:a", 1.0, 0.2)
 
 func _pick_difficulty(d: int) -> void:
 	if phase != Phase.TITLE:
@@ -3625,6 +3656,13 @@ func open_menu(kind: int) -> void:
 	boss_line.get_parent().visible = false
 	_screen.visible = false
 	_menu.visible = true
+	# Punchy pop-in: the whole menu scales up from small with a quick fade.
+	_menu.pivot_offset = Vector2(960, 540)
+	_menu.scale = Vector2(0.92, 0.92)
+	_menu.modulate.a = 0.0
+	var pop := create_tween()
+	pop.tween_property(_menu, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.parallel().tween_property(_menu, "modulate:a", 1.0, 0.16)
 	_clear_rows()
 	_menu_rows.add_theme_constant_override("separation", 16)
 	_menu_rows.offset_top = 215.0
