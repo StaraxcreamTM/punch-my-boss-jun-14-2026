@@ -288,7 +288,8 @@ const LEVELS := [
 	 "hazard": {"sprite": "projector", "axis": "drop", "period": [4.5, 7.0], "warn": 0.7, "dmg": 15.0},
 	 "line": "This is a pass/fail course. You're failing."},
 	{"name": "University", "mood": "grand", "hp": 340.0, "pace": 0.8, "dmg": 17.0, "gimmick": "punch",
-	 "bg": "res://assets/scenes/university.png", "enrage": true,
+	 "bg": "res://assets/scenes/university.png", "enrage": true, "objection": true,
+	 "hazard": {"sprites": ["ibeam", "gurney", "eraser", "projector", "baton"], "period": [3.0, 4.5], "warn": 0.55, "dmg": 16.0},
 	 "line": "Publish or perish. Preferably perish."},
 ]
 
@@ -4183,7 +4184,13 @@ func _update_hazard(delta: float) -> void:
 
 func _run_hazard(h: Dictionary) -> void:
 	_hazard_busy = true
-	var path := "res://assets/hazards/%s.png" % String(h.get("sprite", "ibeam"))
+	# The university gauntlet passes a "sprites" list and throws a random one
+	# each time - so it cycles through every hazard the earlier levels used.
+	var sprite := String(h.get("sprite", "ibeam"))
+	if h.has("sprites"):
+		var pool: Array = h["sprites"]
+		sprite = String(pool[randi() % pool.size()])
+	var path := "res://assets/hazards/%s.png" % sprite
 	if not ResourceLoader.exists(path):
 		_reset_hazard()
 		return
@@ -4193,7 +4200,9 @@ func _run_hazard(h: Dictionary) -> void:
 		safe.add_child(_hazard_spr)
 	_hazard_spr.texture = load(path)
 	_hazard_spr.visible = true
-	var axis := String(h.get("axis", "h"))
+	# Drops for the tall ones (eraser/projector), sweeps for the rest - unless
+	# the config forces an axis.
+	var axis := String(h.get("axis", "drop" if sprite in ["eraser", "projector"] else "h"))
 	var warn := float(h.get("warn", 0.7))
 	# Warning tell: a flashing arrow-word where it will come from.
 	var from_left := randf() < 0.5
