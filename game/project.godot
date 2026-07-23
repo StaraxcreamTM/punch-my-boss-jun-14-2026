@@ -14,6 +14,7 @@ config/name="Punch My Boss"
 config/description="A stress-relief game — punch your boss."
 config/version="0.1.0"
 run/main_scene="res://scenes/main.tscn"
+config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 

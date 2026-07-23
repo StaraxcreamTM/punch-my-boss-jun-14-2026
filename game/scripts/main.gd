@@ -788,6 +788,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				KEY_3: _pick_difficulty(Difficulty.BRAWLER)
 				KEY_UP: _parry()
 				KEY_SHIFT: _super_punch()
+				KEY_ESCAPE: _go_back()
 				KEY_SPACE, KEY_ENTER: _advance_screen()
 	elif event is InputEventJoypadButton:
 		match event.button_index:
@@ -2208,6 +2209,26 @@ func _notification(what: int) -> void:
 	# both plus the plain tree exit.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE 			or what == NOTIFICATION_EXIT_TREE:
 		_release_music()
+	# Android hardware back button (and desktop ESC, via _unhandled_input).
+	elif what == NOTIFICATION_WM_GO_BACK:
+		_go_back()
+
+# One "back" gesture, shared by the Android back button and the ESC key:
+# pause->resume, fight->pause, a sub-screen->main menu, an end screen->menu.
+# On the main menu it does nothing (no accidental app-quit).
+func _go_back() -> void:
+	if _pause_overlay != null and _pause_overlay.visible:
+		_resume()
+		return
+	match phase:
+		Phase.FIGHT:
+			_on_pause()
+		Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS, Phase.AWARDS, Phase.STATS, Phase.PREFIGHT:
+			open_menu(Phase.MENU)
+		Phase.VICTORY, Phase.GAMEOVER:
+			_advance_screen()
+		_:
+			pass
 
 func _exit_tree() -> void:
 	_release_music()
