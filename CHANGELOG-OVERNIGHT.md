@@ -408,3 +408,13 @@ first launch (persisted settings/seen_howto, skipped in the demo) and is
 re-viewable any time from Options -> HOW TO PLAY. Overlay is PROCESS_MODE_ALWAYS
 so it works over a paused fight too. Layout filmstrip-verified after fitting the
 card to the font's real line height; parse clean.
+
+## v0.72 — daily challenges become real modifiers
+
+The Daily Grievance was flavour text over a normal fight; now each day's
+challenge actually reshapes the fight. Five rotating modifiers: just win /
+Model Employee (flawless doubles the reward) / Glass Jaw (start at half health)
+/ Iron Boss (he has double health) / Sudden Death (one hit ends the run). The
+date picks one; it applies only while the daily is active and clears afterward.
+DAILY_CHALLENGES is now structured data (name + php/bosshp/oneshot). Reuses the
+proven _hp_mul path (Endless) and the player-HP bar; parse + boot verified.

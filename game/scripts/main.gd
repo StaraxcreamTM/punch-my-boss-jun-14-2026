@@ -1392,7 +1392,10 @@ func _hit_player() -> void:
 	_buzz(80)
 	_nudge_skill(-0.12)          # ate it: ease off
 	_hits_this_fight += 1        # a landed boss punch: no longer flawless
-	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0) * _dmg_mul)
+	if _daily_oneshot:
+		player_hp = 0.0          # Sudden Death daily: one hit ends it
+	else:
+		player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0) * _dmg_mul)
 	_flash_screen(0.42)
 	_shake(30.0, 0.4)
 	_hitstop(0.08)
@@ -2681,10 +2684,18 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 	_screen.visible = false
 	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.82)
 	var cfg := _level_cfg()
+	# Daily modifier reshapes this fight (boss/player health, sudden death).
+	_daily_oneshot = false
+	var php_start := 1.0
+	if _daily_active:
+		var m := _daily_challenge()
+		_hp_mul *= float(m.get("bosshp", 1.0))
+		php_start = float(m.get("php", 1.0))
+		_daily_oneshot = bool(m.get("oneshot", false))
 	hp_max = float(cfg.get("hp", 120.0)) * _hp_mul
 	_set_hp(hp_max)
 	if reset_player_hp:
-		_set_player_hp(player_hp_max)
+		_set_player_hp(player_hp_max * php_start)
 	_set_rage(0.0)
 	combo = 0
 	frenzy = 0.0
@@ -4095,7 +4106,7 @@ func _populate_main() -> void:
 		dg.disabled = true
 		_menu_rows.add_child(dg)
 	else:
-		var dg := _menu_button("DAILY: %s  (Lv %d)" % [_daily_challenge(), _daily_level()],
+		var dg := _menu_button("DAILY: %s  (Lv %d)" % [_daily_name(), _daily_level()],
 			Color(0.86, 0.32, 0.30))
 		dg.pressed.connect(_start_daily)
 		_menu_rows.add_child(dg)
@@ -4962,17 +4973,22 @@ func _endless_banner() -> void:
 # rotating level, extra reward for staying flawless. Completing it grants
 # "grievance points" (a currency) and builds a daily streak. Cheap retention,
 # no server - the date comes from the system clock.
+# Each daily is a real fight modifier, not just flavour: "name" shows on the
+# menu, the other keys reshape the fight when the daily is active. "php" scales
+# the player's starting health, "bosshp" scales the boss's, "oneshot" ends the
+# run on a single hit. The date picks one deterministically.
 const DAILY_CHALLENGES := [
-	"Clock out early: just win.",
-	"Model Employee: win without being hit for double reward.",
-	"No sick days: win it in one go.",
-	"Performance review: beat your best score here.",
-	"Overtime: survive the whole fight.",
+	{"name": "Clock out early: just win.", "php": 1.0, "bosshp": 1.0, "oneshot": false},
+	{"name": "Model Employee: stay flawless for double.", "php": 1.0, "bosshp": 1.0, "oneshot": false},
+	{"name": "Glass Jaw: you start at half health.", "php": 0.5, "bosshp": 1.0, "oneshot": false},
+	{"name": "Iron Boss: he has double health.", "php": 1.0, "bosshp": 2.0, "oneshot": false},
+	{"name": "Sudden Death: one punch and you're fired.", "php": 1.0, "bosshp": 1.0, "oneshot": true},
 ]
 var grievance_points: int = 0
 var daily_streak: int = 0
 var _daily_last: String = ""       # yyyy-mm-dd of last completion
 var _daily_active: bool = false
+var _daily_oneshot: bool = false   # this fight ends on a single hit
 
 # Career ranks earned by accumulating grievance points - a progression spine
 # so the currency the daily challenge grants actually means something. Pure
@@ -5046,8 +5062,11 @@ func _day_seed() -> int:
 func _daily_level() -> int:
 	return (_day_seed() % LEVELS.size()) + 1
 
-func _daily_challenge() -> String:
+func _daily_challenge() -> Dictionary:
 	return DAILY_CHALLENGES[_day_seed() % DAILY_CHALLENGES.size()]
+
+func _daily_name() -> String:
+	return String(_daily_challenge().get("name", ""))
 
 func _daily_done_today() -> bool:
 	return _daily_last == _today_str()
