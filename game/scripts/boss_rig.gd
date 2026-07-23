@@ -688,3 +688,81 @@ func barge(side_left: bool) -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tb.tween_interval(0.06)
 	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.34).set_trans(Tween.TRANS_BACK)
+
+
+# --- more Looney Tunes hit gags (v2) ---------------------------------------
+
+# Accordion: the whole body crushes down and springs, twice, like a squeezebox.
+func accordion(power: float = 1.0) -> void:
+	var tw := create_tween()
+	for i in 2:
+		var f := 1.0 - float(i) * 0.35
+		tw.tween_property(self, "body_scale", Vector2(0.30 * power * f, -0.34 * power * f), 0.05) \
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		tw.tween_property(self, "body_scale", Vector2(-0.14 * power * f, 0.20 * power * f), 0.07) \
+			.set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.16).set_trans(Tween.TRANS_BACK)
+	pose({"spine": 0.18 * power, "chest": 0.14 * power, "head": 0.12 * power}, 0.05, 0.2, 0.3)
+
+# Orbit-eyes: the head swings round in a full circle a few times, dazed.
+func orbit_head(times: int = 3, dur: float = 0.7) -> void:
+	var key := "head"
+	if not _pos.has(key):
+		return
+	var tw := create_tween()
+	var steps := times * 8
+	for i in steps + 1:
+		var a := TAU * float(i) / 8.0
+		var r := 34.0 * (1.0 - float(i) / float(steps + 1))   # spiral in
+		tw.tween_method(func(v: Vector2) -> void: _pos[key] = v,
+			_pos[key], Vector2(cos(a) * r, sin(a) * r - r), dur / float(steps)) \
+			.set_trans(Tween.TRANS_LINEAR)
+	tw.tween_method(func(v: Vector2) -> void: _pos[key] = v, _pos[key], Vector2.ZERO, 0.18)
+
+# Bends over backwards from a big chin shot, then whips upright.
+func backwards_bend(power: float = 1.0) -> void:
+	pose({"spine": -0.5 * power, "chest": -0.45 * power, "head": -0.7 * power,
+		"thighL": -0.18, "thighR": -0.18}, 0.06, 0.10, 0.30)
+	var tb := create_tween()
+	tb.tween_property(self, "body_pos", Vector2(0.0, -30.0 * power), 0.06).set_trans(Tween.TRANS_EXPO)
+	tb.tween_interval(0.10)
+	tb.tween_property(self, "body_pos", Vector2.ZERO, 0.28).set_trans(Tween.TRANS_BACK)
+
+# Knees knock together, trembling, holding a scared crouch.
+func knee_knock(dur: float = 1.1) -> void:
+	var tw := create_tween()
+	var steps := 9
+	for i in steps:
+		var m := (0.34 if i % 2 == 0 else -0.34) * (1.0 - float(i) / float(steps + 3))
+		tw.tween_method(func(v: float) -> void:
+			_rot["thighL"] = v
+			_rot["thighR"] = -v
+			_rot["shinL"] = -v * 1.2
+			_rot["shinR"] = v * 1.2, _rot["thighL"], m, dur / float(steps)) \
+			.set_trans(Tween.TRANS_SINE)
+	tw.tween_method(func(v: float) -> void:
+		_rot["thighL"] = v
+		_rot["thighR"] = v
+		_rot["shinL"] = v
+		_rot["shinR"] = v, _rot["thighL"], 0.0, 0.2)
+	pose({"spine": 0.16, "head": 0.14, "uarmL": 0.5, "uarmR": -0.5}, 0.1, dur, 0.3)
+
+# The head pops clean off upward (accessories/hair "launch"), hangs, drops back.
+# Sells as a launch even without separate accessory art - the whole head sprite
+# leaps and returns.
+func parts_launch(power: float = 1.0) -> void:
+	var key := "head"
+	if not _pos.has(key):
+		return
+	var tw := create_tween()
+	tw.tween_method(func(v: Vector2) -> void: _pos[key] = v,
+		Vector2.ZERO, Vector2(randf_range(-20.0, 20.0), -150.0 * power), 0.10) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.12)
+	tw.tween_method(func(v: Vector2) -> void: _pos[key] = v,
+		_pos[key], Vector2.ZERO, 0.22).set_trans(Tween.TRANS_BOUNCE)
+	if head_spr != null:
+		var ts := create_tween()
+		ts.tween_property(head_spr, "rotation", randf_range(-0.5, 0.5), 0.10)
+		ts.tween_property(head_spr, "rotation", 0.0, 0.30).set_trans(Tween.TRANS_ELASTIC)
+	pose({"spine": 0.2 * power, "chest": 0.16 * power}, 0.08, 0.12, 0.28)
