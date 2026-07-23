@@ -638,16 +638,12 @@ func _process(delta: float) -> void:
 		frenzy -= delta
 	_combo_label.visible = combo >= 2
 	if _combo_label.visible:
-		_combo_label.text = "%d\nCOMBO" % combo
+		# Named combo tiers: the label shows the count plus an escalating office
+		# rank. Higher tiers also pay a bigger score multiplier (see _combo_tier).
+		var tier := _combo_tier(combo)
+		_combo_label.text = "%d\n%s" % [combo, tier[0]]
 		_combo_label.scale = _combo_label.scale.lerp(Vector2.ONE * (1.0 + minf(combo, 30.0) * 0.012), 12.0 * delta)
-		var ccol := Color(1, 0.82, 0.17)
-		if combo >= 20:
-			ccol = Color(1, 0.24, 0.94)
-		elif combo >= 10:
-			ccol = Color(1, 0.32, 0.21)
-		elif combo >= 5:
-			ccol = Color(1, 0.62, 0.17)
-		_combo_label.add_theme_color_override("font_color", ccol)
+		_combo_label.add_theme_color_override("font_color", tier[1])
 
 	# Head expression: a recent punch wins, then talking, otherwise neutral.
 	var talking := _type_shown < total
@@ -1010,9 +1006,16 @@ func _crit(impact: Vector2, text_pos: Vector2) -> void:
 # Every landed hit funnels through here: combos multiply damage, rage builds
 # toward FRENZY, HP drains, and a damage number pops off the impact point.
 func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
+	var prev_tier: String = _combo_tier(combo)[0]
 	combo += 1
 	combo_time = COMBO_WINDOW
 	max_combo = maxi(max_combo, combo)
+	# Crossing into a new named tier pops a banner and a little juice.
+	var new_tier: Array = _combo_tier(combo)
+	if String(new_tier[0]) != prev_tier and combo >= 6:
+		_spawn_text(Vector2(960.0, 500.0), String(new_tier[0]) + "!", 96, new_tier[1])
+		_flash_screen(0.18)
+		_shake(6.0, 0.18)
 	if _combo_label != null:
 		_combo_label.pivot_offset = _combo_label.size / 2.0
 		_combo_label.scale = Vector2.ONE * 1.45
@@ -1032,7 +1035,8 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 	_spawn_text(impact + Vector2(randf_range(-20.0, 20.0), -50.0), str(int(dmg)),
 		64 if crit else 44, Color(1, 0.32, 0.21) if crit else Color(1, 1, 1))
 	# Score: damage scaled by the multiplier, bonus for criticals and frenzy.
-	var gained := int(roundf(dmg * 10.0 * combo_mul * (2.0 if crit else 1.0)))
+	var tier_mul: float = _combo_tier(combo)[2]
+	var gained := int(roundf(dmg * 10.0 * combo_mul * tier_mul * (2.0 if crit else 1.0)))
 	_add_score(gained, impact)
 	if frenzy <= 0.0:
 		_set_rage(rage + (13.0 if crit else 5.0))
@@ -1042,6 +1046,24 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 			_flash_screen(0.5)
 			_shake(18.0, 0.4)
 			_spawn_text(Vector2(960.0, 300.0), "FRENZY!!", 130, Color(1, 0.24, 0.94))
+
+# Named combo tiers, ascending. Returns [name, colour, score multiplier]. The
+# office-rank names climb with the streak; the multiplier feeds scoring so a
+# high tier is worth chasing, not just cosmetic.
+func _combo_tier(c: int) -> Array:
+	if c >= 50:
+		return ["HR NIGHTMARE", Color(1, 0.1, 0.55), 2.5]
+	elif c >= 40:
+		return ["INSUBORDINATE", Color(1, 0.24, 0.94), 2.2]
+	elif c >= 30:
+		return ["GOING POSTAL", Color(1, 0.3, 0.3), 1.9]
+	elif c >= 20:
+		return ["UNHINGED", Color(1, 0.32, 0.21), 1.6]
+	elif c >= 12:
+		return ["ON A ROLL", Color(1, 0.5, 0.16), 1.35]
+	elif c >= 6:
+		return ["WARMED UP", Color(1, 0.7, 0.16), 1.15]
+	return ["COMBO", Color(1, 0.82, 0.17), 1.0]
 
 # Award points and pop a floating "+N" at the impact. Big gains read louder.
 func _add_score(amount: int, at: Vector2) -> void:
