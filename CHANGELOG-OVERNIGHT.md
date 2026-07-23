@@ -465,3 +465,17 @@ rig shows underneath, so intro->fight, KO->recover and pose->rig transitions fad
 instead of popping. The fade is cancelled/alpha-reset wherever the pose sprite is
 re-shown (set_pose, _show_ko_floor, play_anim) so a new pose never inherits a
 half-faded state. Filmstrip-verified: single boss throughout, no ghosting.
+
+## v0.76 — signature-clip extraction tool + pending-art manifest (prep)
+
+Prep for the incoming Grok signature-move videos (Terry taunt/jab, main boss
+hurt) - the mp4s are still behind the Chrome download gate, so nothing is
+integrated yet. Added `tools/extract_anim.py`: mp4 -> green-keyed, neutral-
+trimmed, margin-cropped, downscaled fNNN.png sequence for play_anim() slots.
+Validated end-to-end on an existing green-screen boss clip - keying is clean,
+per-frame ~144KB@560h so a ~20-frame signature lands under the 7MB/anim budget.
+Recorded the integration manifest (post IDs, wiring plan, budget levers) in
+ART-INBOX-PENDING.md so it survives context. Also flagged an older Jul-21
+grok-video batch already on disk: one usable boss clip, some green-screen women
+clips awaiting the user's word, and several photorealistic personal videos left
+untouched (not game assets).
