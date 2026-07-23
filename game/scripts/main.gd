@@ -244,37 +244,37 @@ const LEVELS := [
 	# scene art + themed boss art arrive, drop the png in assets/scenes/ and the
 	# character into the roster - no code change. Placeholder gimmick "punch" and
 	# a one-line tell each.
-	{"name": "Nurses' Station", "hp": 240.0, "pace": 1.0, "dmg": 12.0, "gimmick": "punch",
+	{"name": "Nurses' Station", "mood": "tense", "hp": 240.0, "pace": 1.0, "dmg": 12.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/nurses_station.png", "enrage": true,
 	 "line": "Say aah. Now say 'I accept this pay cut'."},
-	{"name": "Police Station", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
+	{"name": "Police Station", "mood": "tense", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/police_station.png",
 	 "line": "You have the right to remain... doing overtime."},
-	{"name": "Construction Site", "hp": 300.0, "pace": 0.9, "dmg": 15.0, "gimmick": "punch",
+	{"name": "Construction Site", "mood": "heavy", "hp": 300.0, "pace": 0.9, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/construction_site.png", "enrage": true,
 	 "line": "Where's your hard hat? Where's your WILL TO LIVE?"},
-	{"name": "Fast Food Chain", "hp": 220.0, "pace": 1.05, "dmg": 11.0, "gimmick": "objects",
+	{"name": "Fast Food Chain", "mood": "bright", "hp": 220.0, "pace": 1.05, "dmg": 11.0, "gimmick": "objects",
 	 "bg": "res://assets/scenes/fast_food.png",
 	 "line": "You want fries with that write-up?"},
-	{"name": "Gas Station", "hp": 250.0, "pace": 1.0, "dmg": 13.0, "gimmick": "punch",
+	{"name": "Gas Station", "mood": "heavy", "hp": 250.0, "pace": 1.0, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/gas_station.png",
 	 "line": "Premium effort? On regular pay? Dream on."},
-	{"name": "Library", "hp": 230.0, "pace": 1.1, "dmg": 10.0, "gimmick": "punch",
+	{"name": "Library", "mood": "bright", "hp": 230.0, "pace": 1.1, "dmg": 10.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/library.png",
 	 "line": "Shhh. Your career is overdue."},
-	{"name": "Lawyer Office", "hp": 280.0, "pace": 0.9, "dmg": 14.0, "gimmick": "punch",
+	{"name": "Lawyer Office", "mood": "tense", "hp": 280.0, "pace": 0.9, "dmg": 14.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/lawyer_office.png", "enrage": true,
 	 "line": "I'll see you in court. And in the parking lot."},
-	{"name": "Hospital", "hp": 300.0, "pace": 0.85, "dmg": 15.0, "gimmick": "punch",
+	{"name": "Hospital", "mood": "tense", "hp": 300.0, "pace": 0.85, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/hospital.png", "enrage": true,
 	 "line": "This won't hurt me a bit."},
-	{"name": "School", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
+	{"name": "School", "mood": "bright", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/school.png",
 	 "line": "Detention. For you. Forever."},
-	{"name": "College", "hp": 300.0, "pace": 0.85, "dmg": 16.0, "gimmick": "punch",
+	{"name": "College", "mood": "grand", "hp": 300.0, "pace": 0.85, "dmg": 16.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/college.png", "enrage": true,
 	 "line": "This is a pass/fail course. You're failing."},
-	{"name": "University", "hp": 340.0, "pace": 0.8, "dmg": 17.0, "gimmick": "punch",
+	{"name": "University", "mood": "grand", "hp": 340.0, "pace": 0.8, "dmg": 17.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/university.png", "enrage": true,
 	 "line": "Publish or perish. Preferably perish."},
 ]
@@ -2041,38 +2041,72 @@ func _demo_tick() -> void:
 # downbeats plus a triangle arpeggio; the whole bar loops seamlessly.
 const MUSIC_BPM := 132.0
 
-func _make_music() -> AudioStreamWAV:
+# Per-mood chiptune loops. Each mood is a chord progression (bass roots), an
+# arpeggio shape, a tempo and a brightness - all just numbers, so every track is
+# generated maths with zero audio assets. Moods are themed to the environments:
+# office (default), tense (hospital/police/lawyer), heavy (construction/gas),
+# bright (fast food/school/library), grand (college/university).
+const MUSIC_MOODS := {
+	"office": {"bpm": 132.0, "roots": [55.00, 43.65, 65.41, 49.00],
+		"arp": [0.0, 3.0, 7.0, 12.0, 7.0, 3.0], "bass": 0.30, "lead": 0.16},
+	"tense":  {"bpm": 104.0, "roots": [55.00, 58.27, 55.00, 51.91],
+		"arp": [0.0, 3.0, 6.0, 3.0], "bass": 0.34, "lead": 0.12},
+	"heavy":  {"bpm": 120.0, "roots": [41.20, 41.20, 55.00, 49.00],
+		"arp": [0.0, 5.0, 7.0, 12.0], "bass": 0.40, "lead": 0.13},
+	"bright": {"bpm": 150.0, "roots": [65.41, 82.41, 73.42, 98.00],
+		"arp": [0.0, 4.0, 7.0, 12.0, 16.0, 12.0], "bass": 0.26, "lead": 0.17},
+	"grand":  {"bpm": 96.0, "roots": [55.00, 65.41, 49.00, 73.42],
+		"arp": [0.0, 4.0, 7.0, 11.0, 12.0], "bass": 0.32, "lead": 0.15},
+}
+
+func _make_music(mood: String = "office") -> AudioStreamWAV:
+	var cfg: Dictionary = MUSIC_MOODS.get(mood, MUSIC_MOODS["office"])
 	var rate := 44100
-	var beat := 60.0 / MUSIC_BPM
+	var beat := 60.0 / float(cfg["bpm"])
 	var bars := 4
 	var dur := beat * 4.0 * float(bars)
 	var n := int(rate * dur)
 	var data := PackedByteArray()
 	data.resize(n * 2)
-	# i-vi-III-VII in A minor: brooding but bouncy, fits the office-brawl tone.
-	var roots := [55.00, 43.65, 65.41, 49.00]   # A1, F1, C2, G1
-	var arp := [0.0, 3.0, 7.0, 12.0, 7.0, 3.0]  # minor triad up and back
+	var roots: Array = cfg["roots"]
+	var arp: Array = cfg["arp"]
+	var bass_amp: float = cfg["bass"]
+	var lead_amp: float = cfg["lead"]
 	for i in n:
 		var t := float(i) / rate
 		var bar := int(t / (beat * 4.0)) % bars
 		var root: float = roots[bar]
-		var tb := fmod(t, beat)                 # position inside the beat
-		# Bass: square wave, plucked envelope on every beat.
+		var tb := fmod(t, beat)
 		var benv := exp(-tb * 7.0)
-		var bs := (1.0 if sin(TAU * root * t) >= 0.0 else -1.0) * benv * 0.30
-		# Arpeggio: triangle, six steps per bar.
+		var bs := (1.0 if sin(TAU * root * t) >= 0.0 else -1.0) * benv * bass_amp
 		var step := int(t / (beat * 4.0 / float(arp.size()))) % arp.size()
 		var af: float = root * 4.0 * pow(2.0, float(arp[step]) / 12.0)
 		var aenv := exp(-fmod(t, beat * 4.0 / float(arp.size())) * 9.0)
 		var ph := fmod(af * t, 1.0)
 		var tri := 4.0 * absf(ph - 0.5) - 1.0
-		var as_ := tri * aenv * 0.16
+		var as_ := tri * aenv * lead_amp
 		data.encode_s16(i * 2, int(clampf(bs + as_, -1.0, 1.0) * 32767.0))
 	var w := _wav(data, rate)
 	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	w.loop_begin = 0
 	w.loop_end = n
 	return w
+
+# Swap the music to a mood (generated once per mood, then cached), keeping it
+# playing across the swap if it was already going.
+var _music_cache: Dictionary = {}
+var _music_mood: String = "office"
+
+func set_music_mood(mood: String) -> void:
+	if mood == _music_mood or _music_player == null:
+		return
+	_music_mood = mood
+	if not _music_cache.has(mood):
+		_music_cache[mood] = _make_music(mood)
+	var was_playing := _music_player.playing
+	_music_player.stream = _music_cache[mood]
+	if was_playing and music_on:
+		_music_player.play()
 
 func _notification(what: int) -> void:
 	# --quit-after and a window close take different teardown paths, so cover
@@ -2094,7 +2128,8 @@ func _release_music() -> void:
 
 func _setup_music() -> void:
 	_music_player = AudioStreamPlayer.new()
-	_music_player.stream = _make_music()
+	_music_cache["office"] = _make_music("office")
+	_music_player.stream = _music_cache["office"]
 	_music_player.volume_db = -12.0
 	add_child(_music_player)
 	# Deliberately NOT started here. Browsers refuse audio until the user has
@@ -2312,6 +2347,7 @@ func _start_fight() -> void:
 		rig_anim.revive()
 		rig_anim.idle_amp = 1.0
 	_start_gimmick()
+	set_music_mood(String(_level_cfg().get("mood", "office")))
 	ko_banner.text = "FIGHT!"
 	ko_banner.pivot_offset = ko_banner.size / 2.0
 	ko_banner.modulate.a = 1.0
