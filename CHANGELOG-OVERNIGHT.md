@@ -398,3 +398,13 @@ each unlocked level its act's colour, so the four acts show as coloured bands
 prefight card shows "ACT II · Middle Management" above the opponent. Data-driven
 (ACTS table + _act_index_for/_act_label/_act_color) so re-banding is a one-line
 edit. Level-select act colouring filmstrip-verified; parse clean.
+
+## v0.71 — "How to Play" onboarding card
+
+For a paid game the first 30 seconds decide refunds, and the controls weren't
+taught anywhere. Added a one-card tutorial: TAP to punch, watch the wind-up,
+SWIPE to dodge/duck, SWIPE-up to parry, fill the K.O. meter. It shows once on
+first launch (persisted settings/seen_howto, skipped in the demo) and is
+re-viewable any time from Options -> HOW TO PLAY. Overlay is PROCESS_MODE_ALWAYS
+so it works over a paused fight too. Layout filmstrip-verified after fitting the
+card to the font's real line height; parse clean.

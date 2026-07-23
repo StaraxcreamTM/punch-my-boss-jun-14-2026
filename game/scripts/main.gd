@@ -178,6 +178,7 @@ var music_on: bool = true
 # on a phone the buzz is half of what sells a punch. No-op on desktop, so it
 # costs nothing to leave on.
 var haptics_on: bool = true
+var seen_howto: bool = false       # first-launch tutorial card shown once
 
 func _buzz(ms: int) -> void:
 	if not haptics_on:
@@ -626,6 +627,10 @@ func _ready() -> void:
 	_build_screens()
 	_build_menu_ui()
 	_show_title()
+	# First-ever launch: teach the controls before anything else. Skipped in the
+	# screenshot demo and once the player has seen it.
+	if not seen_howto and not _shot_mode:
+		_show_howto(true)
 
 	var taunt_timer := Timer.new()
 	taunt_timer.wait_time = 3.8
@@ -2339,6 +2344,89 @@ func _ensure_pause_ui() -> void:
 	quit.pressed.connect(_quit_to_menu)
 	vb.add_child(quit)
 
+var _howto_overlay: Control
+
+const HOWTO_BODY := "TAP the boss to punch  ·  A / B body,  X / Y head.
+He WINDS UP before he swings — that's your cue.
+SWIPE  ←  →  to dodge his punch,   SWIPE  ↓  to duck.
+SWIPE  ↑  to PARRY it: staggers him wide open.
+Fill the K.O. meter to launch him out of the office."
+
+func _ensure_howto_ui() -> void:
+	if _howto_overlay != null:
+		return
+	_howto_overlay = Control.new()
+	_howto_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_howto_overlay.z_index = 125
+	_howto_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_howto_overlay.visible = false
+	add_child(_howto_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.03, 0.08, 0.9)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_howto_overlay.add_child(dim)
+	var card := Panel.new()
+	card.anchor_left = 0.5
+	card.anchor_right = 0.5
+	card.anchor_top = 0.5
+	card.anchor_bottom = 0.5
+	card.offset_left = -660.0
+	card.offset_right = 660.0
+	card.offset_top = -390.0
+	card.offset_bottom = 390.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.98, 0.96, 0.86)
+	sb.set_corner_radius_all(20)
+	sb.set_border_width_all(6)
+	sb.border_color = Color(0.82, 0.2, 0.18)
+	card.add_theme_stylebox_override("panel", sb)
+	_howto_overlay.add_child(card)
+	var title := Label.new()
+	title.text = "HOW TO PLAY"
+	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_color_override("font_color", Color(0.82, 0.2, 0.18))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.anchor_right = 1.0
+	title.offset_top = 34.0
+	title.offset_bottom = 120.0
+	card.add_child(title)
+	var body := Label.new()
+	body.text = HOWTO_BODY
+	body.add_theme_font_size_override("font_size", 33)
+	body.add_theme_color_override("font_color", Color(0.12, 0.10, 0.14))
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	body.anchor_right = 1.0
+	body.offset_left = 40.0
+	body.offset_right = -40.0
+	body.offset_top = 130.0
+	body.offset_bottom = 470.0
+	card.add_child(body)
+	var go := _menu_button("LET'S GO!", Color(0.20, 0.70, 0.25))
+	go.anchor_left = 0.5
+	go.anchor_right = 0.5
+	go.offset_left = -220.0
+	go.offset_right = 220.0
+	go.offset_top = 600.0
+	go.offset_bottom = 600.0 + MENU_ROW_H
+	go.pressed.connect(_dismiss_howto)
+	card.add_child(go)
+
+func _show_howto(first_time: bool) -> void:
+	_ensure_howto_ui()
+	_howto_overlay.visible = true
+	_howto_first = first_time
+
+var _howto_first: bool = false
+
+func _dismiss_howto() -> void:
+	if _howto_overlay != null:
+		_howto_overlay.visible = false
+	if _howto_first:
+		seen_howto = true
+		_save_prefs()
+		_howto_first = false
+
 func _on_pause() -> void:
 	if phase != Phase.FIGHT:
 		return
@@ -2399,6 +2487,7 @@ func _load_prefs() -> void:
 	for id in cfg.get_value("awards", "earned", []):
 		awards_earned[String(id)] = true
 	haptics_on = bool(cfg.get_value("settings", "haptics", true))
+	seen_howto = bool(cfg.get_value("settings", "seen_howto", false))
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
 	look_skin = int(cfg.get_value("look", "skin", 0))
@@ -2427,6 +2516,7 @@ func _save_prefs() -> void:
 	cfg.set_value("stats", "crits", _crit_total)
 	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
+	cfg.set_value("settings", "seen_howto", seen_howto)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("look", "skin", _own_skin)
@@ -4200,6 +4290,10 @@ func _populate_options() -> void:
 	var dif := _menu_button("DIFFICULTY:  %s" % names[clampi(difficulty, 0, 2)])
 	dif.pressed.connect(_on_cycle_difficulty)
 	_menu_rows.add_child(dif)
+
+	var howto := _menu_button("HOW TO PLAY", Color(0.20, 0.55, 0.62))
+	howto.pressed.connect(func() -> void: _show_howto(false))
+	_menu_rows.add_child(howto)
 
 	var hint := Label.new()
 	hint.text = "Punching Bag - he never fights back.\nDefensive - he guards, but won't swing.\nBrawler - he hits back, so dodge."
