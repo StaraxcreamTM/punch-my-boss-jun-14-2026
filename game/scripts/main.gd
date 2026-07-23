@@ -2668,7 +2668,11 @@ func _start_prefight() -> void:
 	_screen_title.offset_bottom = 300.0
 	_screen_sub.text = "%s
 %s · %s" % [_act_label(level), opponent_name(), String(cfg.get("name", ""))]
-	_screen_hint.text = "tap to begin"
+	# On a daily run, spell out the modifier so the rule isn't a surprise.
+	if _daily_active:
+		_screen_hint.text = "DAILY GRIEVANCE — %s\ntap to begin" % _daily_name()
+	else:
+		_screen_hint.text = "tap to begin"
 	var pre: Array = Dia.PREFIGHT.get(level, [])
 	if pre.is_empty():
 		pre = [String(cfg.get("line", ""))]
