@@ -1281,13 +1281,22 @@ func _knockout() -> void:
 	var bt := create_tween()
 	bt.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-	# Launch the boss off-screen with a spin.
-	var dir := 1.0 if randf() > 0.5 else -1.0
-	var fly := create_tween()
-	fly.tween_property(rig, "position", Vector2(dir * 700.0, -1700.0), 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	fly.parallel().tween_property(rig, "rotation", dir * 7.0, 0.55)
-	fly.parallel().tween_property(rig, "scale", Vector2(0.7, 0.7), 0.55)
-	await fly.finished
+	if has_ko():
+		# Floored KO: he drops where he stands and the hand-drawn KO art shows
+		# him spread out on the ground.
+		var drop := create_tween()
+		drop.tween_property(rig, "position", Vector2(0.0, 40.0), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await drop.finished
+		_show_ko_floor()
+		await get_tree().create_timer(0.5, true, false, true).timeout
+	else:
+		# Launch the boss off-screen with a spin.
+		var dir := 1.0 if randf() > 0.5 else -1.0
+		var fly := create_tween()
+		fly.tween_property(rig, "position", Vector2(dir * 700.0, -1700.0), 0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		fly.parallel().tween_property(rig, "rotation", dir * 7.0, 0.55)
+		fly.parallel().tween_property(rig, "scale", Vector2(0.7, 0.7), 0.55)
+		await fly.finished
 
 	Engine.time_scale = 1.0
 	_say(_line("ko", Dia.KO))
@@ -1299,6 +1308,7 @@ func _knockout() -> void:
 	var ft := create_tween()
 	ft.tween_property(ko_banner, "modulate:a", 0.0, 0.4)
 	_react_time = 0.0
+	set_pose("")          # clear the floored-KO art; the rig stands back up
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.lean = 0.0
@@ -3157,6 +3167,37 @@ func _pose_dir() -> String:
 
 func has_pose(name: String) -> bool:
 	return ResourceLoader.exists("%s/%s.png" % [_pose_dir(), name])
+
+# Full-body knocked-out art (lying on the floor). Closes the floored-KO gap:
+# characters with this show it on the ground during the K.O. beat instead of
+# the generic offscreen launch.
+func has_ko() -> bool:
+	return ResourceLoader.exists("%s/ko/ko.png" % _char_root())
+
+# Drop the KO art onto the floor, centred low, for the knocked-out beat.
+func _show_ko_floor() -> void:
+	var path := "%s/ko/ko.png" % _char_root()
+	if not ResourceLoader.exists(path):
+		return
+	if _pose_spr == null:
+		_pose_spr = Sprite2D.new()
+		_pose_spr.centered = false
+		_pose_spr.z_index = 20
+		_pose_spr.material = _outline_mat
+		rig.add_child(_pose_spr)
+	_pose_name = "@ko"
+	_anim_playing = false
+	_set_rig_visible(false)
+	var tex: Texture2D = load(path)
+	_pose_spr.texture = tex
+	# A figure lying spread out on the ground: scale it modestly and CENTRE it
+	# on the office floor line, rather than treating it as a standing figure
+	# (which shot it up past the top of the screen).
+	var sc := 720.0 / float(tex.get_width())
+	_pose_spr.scale = Vector2(sc, sc)
+	_pose_spr.position = Vector2(260.0 - tex.get_width() * sc * 0.5,
+		1010.0 - tex.get_height() * sc * 0.5)
+	_pose_spr.visible = true
 
 func set_pose(name: String) -> void:
 	if name == _pose_name:
