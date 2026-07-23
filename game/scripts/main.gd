@@ -2210,7 +2210,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE 			or what == NOTIFICATION_EXIT_TREE:
 		_release_music()
 	# Android hardware back button (and desktop ESC, via _unhandled_input).
-	elif what == NOTIFICATION_WM_GO_BACK:
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_go_back()
 
 # One "back" gesture, shared by the Android back button and the ESC key:
