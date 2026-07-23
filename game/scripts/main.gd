@@ -2885,6 +2885,8 @@ const CHARS := {
 		"scale": 1.15347, "ox": -99.31, "oy": 60.0,
 		"customisable": false,
 		"arm_gain": 1.0,
+		"faces": {"dir": "res://assets/boss7/heads", "anchor": Vector2(280, 470),
+			"react": ["hurt0", "dizzy0"], "angry": ["angry0"]},
 		"bones": {
 			"Hip": Vector2(259, 798),
 			"Spine": Vector2(0, -196),
@@ -2918,7 +2920,6 @@ const CHARS := {
 			["farm_r", "Hip/ArmR/ForearmR", Vector2(480, 555), Vector2(562, 590), 6],
 			["hand_l", "Hip/ArmL/ForearmL/FistL", Vector2(0, 626), Vector2(50, 690), 7],
 			["hand_r", "Hip/ArmR/ForearmR/FistR", Vector2(524, 626), Vector2(572, 690), 7],
-			["head", "Hip/Spine/Chest/Head", Vector2(10, 0), Vector2(311, 300), 8],
 		],
 	},
 	"tank_w": {
@@ -2967,6 +2968,8 @@ const CHARS := {
 		"scale": 1.16601, "ox": -117.20, "oy": 60.0,
 		"customisable": false,
 		"arm_gain": 1.0,
+		"faces": {"dir": "res://assets/boss9/heads", "anchor": Vector2(280, 470),
+			"react": ["dizzy0"], "angry": ["angry0"]},
 		"bones": {
 			"Hip": Vector2(259, 818),
 			"Spine": Vector2(0, -198),
@@ -3000,7 +3003,6 @@ const CHARS := {
 			["farm_r", "Hip/ArmR/ForearmR", Vector2(326, 606), Vector2(595, 670), 6],
 			["hand_l", "Hip/ArmL/ForearmL/FistL", Vector2(0, 696), Vector2(46, 730), 7],
 			["hand_r", "Hip/ArmR/ForearmR/FistR", Vector2(326, 696), Vector2(600, 730), 7],
-			["head", "Hip/Spine/Chest/Head", Vector2(7, 0), Vector2(323, 300), 8],
 		],
 	},
 }
