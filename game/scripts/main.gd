@@ -253,7 +253,7 @@ const LEVELS := [
 	# character into the roster - no code change. Placeholder gimmick "punch" and
 	# a one-line tell each.
 	{"name": "Nurses' Station", "mood": "tense", "hp": 240.0, "pace": 1.0, "dmg": 12.0, "gimmick": "punch",
-	 "bg": "res://assets/scenes/nurses_station.png", "enrage": true,
+	 "bg": "res://assets/scenes/nurses_station.png", "enrage": true, "counter": true,
 	 "line": "Say aah. Now say 'I accept this pay cut'."},
 	{"name": "Police Station", "mood": "tense", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/police_station.png",
@@ -643,6 +643,7 @@ func _process(delta: float) -> void:
 			_update_fight(delta)
 			_update_hazard(delta)   # environmental hazards layer on punch fights
 			_update_noise(delta)    # library SHHH meter decays when you pause
+			_update_counter(delta)  # nurses syringe counter-window
 
 	# Idle life + any in-flight animation offsets, composed onto the bones.
 	if rig_anim != null:
@@ -2439,6 +2440,7 @@ func _start_fight() -> void:
 	_enraged = false
 	_hits_this_fight = 0
 	_reset_hazard()
+	_reset_counter()
 	_setup_pump()
 	_build_noise_meter()
 	_noise = 0.0
@@ -4455,3 +4457,73 @@ func _pump_explosion(at: Vector2) -> void:
 	_set_player_hp(player_hp)
 	if player_hp <= 0.0:
 		_game_over()
+
+# --- nurses' station: syringe counter-window --------------------------------
+# The nurse periodically lunges with a syringe. A tight window opens to PARRY
+# (counter) the jab: nail it and she's staggered and you bank adrenaline; miss
+# and you take the needle. Reuses the parry input, themed as a counter.
+var _counter_t: float = 0.0
+var _counter_spr: Sprite2D
+var _counter_busy: bool = false
+
+func _has_counter() -> bool:
+	return bool(_level_cfg().get("counter", false))
+
+func _reset_counter() -> void:
+	_counter_busy = false
+	if _has_counter():
+		_counter_t = randf_range(2.5, 4.0)
+	if _counter_spr != null:
+		_counter_spr.visible = false
+
+func _update_counter(delta: float) -> void:
+	if not _has_counter() or _koing or _counter_busy:
+		return
+	_counter_t -= delta
+	if _counter_t <= 0.0:
+		_run_counter()
+
+func _run_counter() -> void:
+	_counter_busy = true
+	var path := "res://assets/hazards/syringe.png"
+	if not ResourceLoader.exists(path):
+		_reset_counter()
+		return
+	if _counter_spr == null:
+		_counter_spr = Sprite2D.new()
+		_counter_spr.z_index = 32
+		safe.add_child(_counter_spr)
+	_counter_spr.texture = load(path)
+	_counter_spr.visible = true
+	_counter_spr.scale = Vector2(2.6, 2.6)
+	# Wind-up: syringe drawn back by the boss, with a COUNTER! cue.
+	_counter_spr.position = Vector2(1180, 560)
+	_spawn_text(Vector2(960.0, 250.0), "INJECTION! (parry!)", 72, Color(0.4, 0.9, 1.0))
+	_shake(4.0, 0.2)
+	await get_tree().create_timer(0.7, true, false, true).timeout
+	# Lunge toward the player (screen-forward, i.e. down-centre).
+	var tw := create_tween()
+	tw.tween_property(_counter_spr, "position", Vector2(900, 950), 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await get_tree().create_timer(0.18, true, false, true).timeout
+	if _parry_time > 0.0:
+		_parry_time = 0.0
+		_spawn_text(Vector2(960.0, 380.0), "COUNTERED!", 90, Color(0.4, 0.9, 1.0))
+		_flash_screen(0.4)
+		_hitstop(0.06)
+		if rig_anim != null:
+			rig_anim.stagger(randf() < 0.5, 1.1)
+		_add_adrenaline(30.0)
+		_enter_stunned(1.4)
+	else:
+		_flash_screen(0.4)
+		_shake(22.0, 0.4)
+		_spawn_text(Vector2(960.0, 440.0), "JAB!", 96, Color(1, 0.3, 0.25))
+		combo = 0
+		player_hp = maxf(0.0, player_hp - 14.0)
+		_set_player_hp(player_hp)
+		if player_hp <= 0.0:
+			_game_over()
+	await tw.finished
+	_counter_spr.visible = false
+	_counter_t = randf_range(4.0, 6.5)
+	_counter_busy = false
