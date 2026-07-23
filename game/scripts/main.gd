@@ -2574,7 +2574,7 @@ func _start_prefight() -> void:
 	_screen_title.offset_top = 150.0
 	_screen_title.offset_bottom = 300.0
 	_screen_sub.text = "%s
-%s" % [String(cfg.get("name", "")), opponent_name()]
+%s · %s" % [_act_label(level), opponent_name(), String(cfg.get("name", ""))]
 	_screen_hint.text = "tap to begin"
 	var pre: Array = Dia.PREFIGHT.get(level, [])
 	if pre.is_empty():
@@ -4058,7 +4058,9 @@ func _populate_levels() -> void:
 		var label := "%d. %s" % [n, String(cfg.get("name", ""))]
 		if locked:
 			label = "%d.  LOCKED" % n
-		var col := Color(0.20, 0.45, 0.85)
+		# Unlocked levels take their act's colour, so the four career acts read as
+		# coloured bands down the list; current level stays green, locked stays dim.
+		var col := _act_color(n)
 		if locked:
 			col = Color(0.17, 0.16, 0.21)
 		elif n == level:
@@ -4066,7 +4068,7 @@ func _populate_levels() -> void:
 		var b := _menu_button(label, col)
 		b.add_theme_font_size_override("font_size", 26)
 		b.custom_minimum_size = Vector2(540, 60)
-		b.tooltip_text = who
+		b.tooltip_text = "%s — %s" % [_act_label(n), who]
 		b.disabled = locked
 		if not locked:
 			b.pressed.connect(_on_pick_level.bind(n))
@@ -4909,6 +4911,30 @@ func _rank_to_next() -> int:
 	if idx >= RANKS.size() - 1:
 		return -1
 	return int(RANKS[idx + 1][0]) - grievance_points
+
+# Career acts: the 20 levels grouped into a climb up the org chart, so the run
+# reads as a story (intern -> CEO) instead of a flat list. [first_level, roman,
+# title, role-colour]. Levels past the last act's range fall into that act.
+const ACTS := [
+	[1, "I", "Onboarding", Color(0.30, 0.62, 0.36)],
+	[6, "II", "Middle Management", Color(0.24, 0.52, 0.82)],
+	[11, "III", "The Corner Office", Color(0.66, 0.36, 0.78)],
+	[16, "IV", "The C-Suite", Color(0.86, 0.42, 0.16)],
+]
+
+func _act_index_for(lvl: int) -> int:
+	var idx := 0
+	for i in range(ACTS.size()):
+		if lvl >= int(ACTS[i][0]):
+			idx = i
+	return idx
+
+func _act_label(lvl: int) -> String:
+	var a: Array = ACTS[_act_index_for(lvl)]
+	return "ACT %s · %s" % [String(a[1]), String(a[2])]
+
+func _act_color(lvl: int) -> Color:
+	return ACTS[_act_index_for(lvl)][3]
 
 func _today_str() -> String:
 	var d := Time.get_date_dict_from_system()

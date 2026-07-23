@@ -387,3 +387,14 @@ Brawler-only (the mode where he attacks). Seeded each fight from a persisted
 baseline (settings/adapt) that each Brawler fight folds into at 30%, so a
 returning veteran isn't re-taught from scratch. No dependency, no app-size cost -
 this is what "smarter boss" means in practice. Parse-clean, boots.
+
+## v0.70 — career acts (Intern -> CEO framing)
+
+The 20 levels now read as a climb up the org chart instead of a flat list.
+Four acts: I Onboarding (1-5), II Middle Management (6-10), III The Corner
+Office (11-15), IV The C-Suite (16-20), each with a colour. Level Select paints
+each unlocked level its act's colour, so the four acts show as coloured bands
+(current level stays green, locked stays dim); tooltips name the act. The
+prefight card shows "ACT II · Middle Management" above the opponent. Data-driven
+(ACTS table + _act_index_for/_act_label/_act_color) so re-banding is a one-line
+edit. Level-select act colouring filmstrip-verified; parse clean.
