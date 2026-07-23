@@ -3848,7 +3848,10 @@ func _populate_main() -> void:
 	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
 	_menu_rows.add_child(op)
 	var st := Label.new()
-	st.text = "BEST %d      %d punches thrown      %d K.O.s      %d grievance pts" % [best_score, stat_punches, stat_kos, grievance_points]
+	var rank_line := "RANK: %s   ·   %d grievance pts" % [_rank_title(), grievance_points]
+	if _rank_to_next() > 0:
+		rank_line += "   (%d to next)" % _rank_to_next()
+	st.text = "%s\nBEST %d      %d punches thrown      %d K.O.s" % [rank_line, best_score, stat_punches, stat_kos]
 	st.add_theme_font_size_override("font_size", 32)
 	st.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
 	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -4613,6 +4616,38 @@ var daily_streak: int = 0
 var _daily_last: String = ""       # yyyy-mm-dd of last completion
 var _daily_active: bool = false
 
+# Career ranks earned by accumulating grievance points - a progression spine
+# so the currency the daily challenge grants actually means something. Pure
+# text, no art to mismatch. [threshold, title], ascending.
+const RANKS := [
+	[0, "New Hire"],
+	[100, "Intern"],
+	[300, "Associate"],
+	[600, "Team Lead"],
+	[1000, "Middle Manager"],
+	[1600, "Director"],
+	[2400, "Vice President"],
+	[3500, "C-Suite"],
+	[5000, "Boss of Bosses"],
+]
+
+func _rank_index() -> int:
+	var idx := 0
+	for i in range(RANKS.size()):
+		if grievance_points >= int(RANKS[i][0]):
+			idx = i
+	return idx
+
+func _rank_title() -> String:
+	return str(RANKS[_rank_index()][1])
+
+# Points still needed for the next rank, or -1 if already at the top.
+func _rank_to_next() -> int:
+	var idx := _rank_index()
+	if idx >= RANKS.size() - 1:
+		return -1
+	return int(RANKS[idx + 1][0]) - grievance_points
+
 func _today_str() -> String:
 	var d := Time.get_date_dict_from_system()
 	return "%04d-%02d-%02d" % [d.year, d.month, d.day]
@@ -4658,21 +4693,25 @@ func _complete_daily(was_flawless: bool) -> void:
 	var reward := 50 + daily_streak * 10
 	if was_flawless:
 		reward *= 2
+	var rank_before := _rank_index()
 	grievance_points += reward
 	_save_prefs()
 	_spawn_text(Vector2(960.0, 360.0), "+%d GRIEVANCE" % reward, 80, Color(1, 0.7, 0.16))
 	_award_toast_text("DAILY GRIEVANCE", "Streak %d  ·  +%d points" % [daily_streak, reward])
+	# Promotion: if this reward pushed us into a new rank, celebrate it.
+	if _rank_index() > rank_before:
+		_award_toast_text("PROMOTED", _rank_title(), 184.0)
 
 # Generic toast (the achievement toast, reusable for the daily reward).
-func _award_toast_text(head_text: String, body_text: String) -> void:
+func _award_toast_text(head_text: String, body_text: String, y_top: float = 40.0) -> void:
 	var toast := Panel.new()
 	toast.z_index = 98
 	toast.anchor_left = 0.5
 	toast.anchor_right = 0.5
 	toast.offset_left = -360.0
 	toast.offset_right = 360.0
-	toast.offset_top = 40.0
-	toast.offset_bottom = 168.0
+	toast.offset_top = y_top
+	toast.offset_bottom = y_top + 128.0
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.98, 0.96, 0.86)
 	sb.set_corner_radius_all(14)

@@ -327,3 +327,13 @@ Persisted under `[daily]` in the save file. Menu shows the live challenge in red
 or a greyed-out "DONE (streak N)" once claimed. A reward toast + floating
 "+N GRIEVANCE" fires on completion. Points shown in the menu stats line.
 Filmstrip-verified the menu button renders; headless parse clean.
+
+## v0.64 — career ranks (grievance-point sink)
+
+The daily challenge granted grievance points but nothing spent them — a dead
+currency. Added a 9-tier career ladder (New Hire → Intern → ... → C-Suite →
+Boss of Bosses) unlocked purely by accumulated points, so the currency now
+means something. Rank + points + "N to next" show on the main menu; crossing a
+threshold on a daily reward fires a "PROMOTED" toast under the reward toast.
+No new art (deliberately — pure text, nothing to mismatch). Menu filmstrip-
+verified; headless parse clean.
