@@ -3887,16 +3887,23 @@ func _show_ko_floor() -> void:
 	_pose_spr.visible = true
 
 func set_pose(name: String) -> void:
-	if name == _pose_name:
-		return
-	if name != "" and not has_pose(name):
-		return                      # character has no art for this pose
-	_pose_name = name
+	# Clearing must ALWAYS enforce the handoff, never short-circuit on _pose_name:
+	# an anim/KO handoff can leave _pose_name desynced from what's actually drawn,
+	# and a no-op here is exactly what left a stale pose sprite on top of the rig.
 	if name == "":
-		if _pose_spr != null:
+		_pose_name = ""
+		# Cancel any playing intro/anim: otherwise _update_anim re-shows _pose_spr
+		# every frame and it draws on top of the now-visible rig (two bosses).
+		_anim_playing = false
+		if _pose_spr != null and is_instance_valid(_pose_spr):
 			_pose_spr.visible = false
 		_set_rig_visible(true)
 		return
+	if name == _pose_name:
+		return
+	if not has_pose(name):
+		return                      # character has no art for this pose
+	_pose_name = name
 	if _pose_spr == null:
 		_pose_spr = Sprite2D.new()
 		_pose_spr.centered = false
@@ -4528,7 +4535,12 @@ func _update_anim(delta: float) -> void:
 		_anim_i += 1
 		if _anim_i >= _anim_frames.size():
 			_anim_playing = false
-			_pose_name = ""
+			# Hand back to the rig PROPERLY: hide the anim surface and re-show the
+			# rig before the callback runs. Previously this only set _pose_name=""
+			# and left _pose_spr visible with the last frame, so the rig (re-shown
+			# elsewhere) and the frozen anim frame drew at once - the "two bosses"
+			# bug. Route through set_pose("") so the clear is enforced in one place.
+			set_pose("")
 			if _anim_done.is_valid():
 				_anim_done.call()
 			return

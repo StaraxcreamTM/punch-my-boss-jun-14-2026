@@ -435,3 +435,24 @@ reset-confirm overlay both filmstrip-verified; parse clean.
 This closes the pure-code sellability backlog. Remaining value is art-gated
 (11 backgrounds, the real Bev/Nina/Marcus/Sandra/Terry sets, 6 themed boss
 bases) pending the Chrome download unblock; holding code until it lands.
+
+## v0.74 — FIX: "two bosses on screen at once"
+
+User bug report (screen recording): two copies of the boss drawn at the same
+time, misaligned. Root cause was a broken rig<->overlay handoff. The full-body
+pose/anim sprite (_pose_spr) and the cutout rig are supposed to be mutually
+exclusive - exactly one visible - but two paths broke that:
+
+1. When a hand-drawn anim (e.g. the boss2 "charge" intro) finished, _update_anim
+   set _pose_name="" but left _pose_spr VISIBLE with its last frame and never
+   re-showed the rig. A later set_pose("") then no-op'd (name already "") so the
+   stale frame stayed on top of the rig.
+2. During a still-playing intro, a hit reaction calls set_pose("") to show the
+   rig, but _update_anim kept re-asserting _pose_spr every frame -> both drawn.
+
+Fix: set_pose("") is now authoritative and idempotent - it always hides the pose
+sprite, cancels any playing anim (so it can't re-show), and shows the rig,
+regardless of _pose_name. The anim-end path routes through it too. Audited the
+other handoffs (entrance walk, guard/palm/recoil poses, floored KO, expression
+swaps) - all clear the same way now. Reproduced the exact double at level 1
+(boss2 charge intro) and filmstrip-verified it's gone across a full fight.
