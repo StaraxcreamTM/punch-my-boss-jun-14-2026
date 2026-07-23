@@ -257,13 +257,14 @@ const LEVELS := [
 	 "line": "Say aah. Now say 'I accept this pay cut'."},
 	{"name": "Police Station", "mood": "tense", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/police_station.png",
+	 "hazard": {"sprite": "baton", "axis": "h", "period": [4.0, 6.5], "warn": 0.6, "dmg": 13.0},
 	 "line": "You have the right to remain... doing overtime."},
 	{"name": "Construction Site", "mood": "heavy", "hp": 300.0, "pace": 0.9, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/construction_site.png", "enrage": true,
 	 "hazard": {"sprite": "ibeam", "axis": "h", "period": [4.5, 7.0], "warn": 0.8, "dmg": 16.0},
 	 "line": "Where's your hard hat? Where's your WILL TO LIVE?"},
 	{"name": "Fast Food Chain", "mood": "bright", "hp": 220.0, "pace": 1.05, "dmg": 11.0, "gimmick": "objects",
-	 "bg": "res://assets/scenes/fast_food.png",
+	 "bg": "res://assets/scenes/fast_food.png", "slick": true,
 	 "line": "You want fries with that write-up?"},
 	{"name": "Gas Station", "mood": "heavy", "hp": 250.0, "pace": 1.0, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/gas_station.png",
@@ -272,7 +273,7 @@ const LEVELS := [
 	 "bg": "res://assets/scenes/library.png", "shush": true,
 	 "line": "Shhh. Your career is overdue."},
 	{"name": "Lawyer Office", "mood": "tense", "hp": 280.0, "pace": 0.9, "dmg": 14.0, "gimmick": "punch",
-	 "bg": "res://assets/scenes/lawyer_office.png", "enrage": true,
+	 "bg": "res://assets/scenes/lawyer_office.png", "enrage": true, "objection": true,
 	 "line": "I'll see you in court. And in the parking lot."},
 	{"name": "Hospital", "mood": "tense", "hp": 300.0, "pace": 0.85, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/hospital.png", "enrage": true,
@@ -284,6 +285,7 @@ const LEVELS := [
 	 "line": "Detention. For you. Forever."},
 	{"name": "College", "mood": "grand", "hp": 300.0, "pace": 0.85, "dmg": 16.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/college.png", "enrage": true,
+	 "hazard": {"sprite": "projector", "axis": "drop", "period": [4.5, 7.0], "warn": 0.7, "dmg": 15.0},
 	 "line": "This is a pass/fail course. You're failing."},
 	{"name": "University", "mood": "grand", "hp": 340.0, "pace": 0.8, "dmg": 17.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/university.png", "enrage": true,
@@ -1242,6 +1244,10 @@ func _enter_windup() -> void:
 	if not _angry_faces.is_empty():
 		_react_tex = _angry_faces[randi() % _angry_faces.size()]
 		_react_time = _windup_dur() + ATTACK_DUR
+	# Lawyer level: every tell throws an "OBJECTION!" parry prompt, cueing the
+	# tight counter rather than a dodge.
+	if not _is_feint and bool(_level_cfg().get("objection", false)):
+		_spawn_text(Vector2(960.0, 250.0), "OBJECTION!", 76, Color(0.4, 0.9, 1.0))
 	if rig_anim != null:
 		rig_anim.unblock()
 		if _is_feint:
@@ -1361,6 +1367,15 @@ func _dodge_lift(dir: int) -> void:
 	_dodge_holding = false
 	if rig_anim != null:
 		rig_anim.dodge_release()
+	# Grease-slick floor (fast food): you SLIDE past the stop before recovering,
+	# so the evade window lingers and precise timing is thrown off.
+	if bool(_level_cfg().get("slick", false)):
+		var overshoot := Vector2(-140.0 * float(dir), 0.0)
+		_dodge_time = maxf(_dodge_time, 0.22)   # the slide keeps you evading longer
+		var st := create_tween()
+		st.tween_property(safe, "position", overshoot, 0.16).set_trans(Tween.TRANS_SINE)
+		st.tween_property(safe, "position", Vector2.ZERO, 0.34).set_trans(Tween.TRANS_BACK)
+		return
 	var tw := create_tween()
 	tw.tween_property(safe, "position", Vector2.ZERO, 0.22).set_trans(Tween.TRANS_BACK)
 
