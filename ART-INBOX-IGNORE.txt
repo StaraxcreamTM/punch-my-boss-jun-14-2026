@@ -1,0 +1,20 @@
+# Grok images already reviewed and NOT to be integrated.
+# Per user (2026-07-23): the Jul 22 batch below are DUPLICATES of the
+# already-integrated Yolanda (black-hair suit = boss7/9) and Keisha
+# (pink-glitter-glasses tank woman) sets - same generation window, same
+# subjects. They were never meant for boss6/boss8. Do not re-flag or integrate.
+#
+# The correct matching sets (Bev = auburn/freckled suit; Nina = no-glasses tank;
+# plus Marcus/Sandra/Terry sets, 11 backgrounds, 6 themed boss bases) live in
+# the user's Grok history and arrive when the Chrome download block is cleared.
+# Neutral faces for each: harvest from the base body (the Terry method).
+grok-image-a3b60f7c-5733-42ed-9a78-f4003f2b9adc.jpg
+grok-image-3d03ed47-9261-4b49-8571-338a6159c0c2.jpg
+grok-image-a8b62af0-69fa-4615-91bd-c52f6c1d8f05.jpg
+grok-image-0fe0c747-6357-42ff-9636-22760a343c96.jpg
+grok-image-12290ee1-a9a3-45a7-bee8-9a73a4f706ff.jpg
+grok-image-441176f9-1150-493b-a535-ce36743caa18.jpg
+grok-image-779e8e93-e81a-4c5c-85ca-dcaefabcc2de.jpg
+grok-image-235def53-1e75-47db-a37a-bcc29b0a8433.jpg
+grok-image-af123fa8-4c10-4c08-9653-85da8a8537df.jpg
+grok-image-c9254941-8d59-4af1-87bd-131ea9db0386.jpg
