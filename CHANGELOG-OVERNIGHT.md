@@ -366,3 +366,13 @@ Runtime-verified by routing the demo into Endless - fights, scaling, mid-run
 opponent swaps and round transitions all ran clean. Menu row height trimmed
 108->92 and the rank footer moved to Your Record so 8 buttons fit the 1080
 canvas and a portrait phone (verified at 1080x1920).
+
+## v0.67 — real pause menu (Resume / Quit)
+
+The PAUSE button used to dump you straight to the main menu with no
+confirmation - an accidental tap ended your fight, and would silently kill a
+long Endless run. Now it opens a proper overlay: "PAUSED" with RESUME and QUIT
+TO MENU, and it freezes the tree (get_tree().paused) so the fight actually
+stops. The overlay processes in PROCESS_MODE_ALWAYS so its buttons work while
+everything else is frozen; Quit also clears any Endless scaling. Filmstrip-
+verified the overlay renders over a dimmed fight; headless parse clean.

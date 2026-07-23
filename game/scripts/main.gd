@@ -2065,10 +2065,13 @@ func _demo_tick() -> void:
 		_demo_tour()
 		return
 	_demo_step += 1
-	# Exercise PAUSE once mid-fight so the filmstrip proves it returns to the
-	# menu, rather than trusting the signal connection.
+	# Exercise PAUSE once mid-fight so the filmstrip proves the pause overlay
+	# renders, then resume so the fight (and the tour) continues.
 	if _demo_step == 16 and phase == Phase.FIGHT:
 		_on_pause()
+		return
+	if _demo_step == 17 and _pause_overlay != null and _pause_overlay.visible:
+		_resume()
 		return
 	# Gimmick levels need their own scripted play.
 	match _gimmick():
@@ -2242,9 +2245,67 @@ func _kick_music() -> void:
 
 # Leave a fight and go back to the menu. Progress in the fight is abandoned;
 # the level itself stays unlocked.
+var _pause_overlay: Control
+
+func _ensure_pause_ui() -> void:
+	if _pause_overlay != null:
+		return
+	_pause_overlay = Control.new()
+	_pause_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.z_index = 120
+	# ALWAYS so the overlay and its buttons keep processing while the rest of the
+	# tree is frozen by get_tree().paused.
+	_pause_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause_overlay.visible = false
+	add_child(_pause_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.03, 0.08, 0.82)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_pause_overlay.add_child(dim)
+	var title := _big_label(96, Color(1, 0.86, 0.16), -0.02)
+	title.text = "PAUSED"
+	title.offset_top = 220.0
+	title.offset_bottom = 360.0
+	_pause_overlay.add_child(title)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 24)
+	vb.anchor_left = 0.5
+	vb.anchor_right = 0.5
+	vb.offset_left = -MENU_W * 0.5
+	vb.offset_right = MENU_W * 0.5
+	vb.offset_top = 430.0
+	_pause_overlay.add_child(vb)
+	var resume := _menu_button("RESUME", Color(0.20, 0.70, 0.25))
+	resume.pressed.connect(_resume)
+	vb.add_child(resume)
+	var quit := _menu_button("QUIT TO MENU", Color(0.72, 0.26, 0.24))
+	quit.pressed.connect(_quit_to_menu)
+	vb.add_child(quit)
+
 func _on_pause() -> void:
 	if phase != Phase.FIGHT:
 		return
+	_ensure_pause_ui()
+	if _pause_overlay.visible:
+		return
+	_pause_overlay.visible = true
+	# In the screenshot demo, don't actually freeze the tree - that would stall
+	# the capture timer; showing the overlay is enough to film it.
+	if not _shot_mode:
+		get_tree().paused = true
+
+func _resume() -> void:
+	get_tree().paused = false
+	if _pause_overlay != null:
+		_pause_overlay.visible = false
+
+func _quit_to_menu() -> void:
+	get_tree().paused = false
+	if _pause_overlay != null:
+		_pause_overlay.visible = false
+	_endless = false
+	_hp_mul = 1.0
+	_dmg_mul = 1.0
 	set_pose("")
 	open_menu(Phase.MENU)
 
