@@ -211,6 +211,10 @@ var adrenaline: float = 0.0
 const ADREN_MAX := 100.0
 var _adren_bar: Panel
 var _adren_label: Label
+# Touch swipe detection for the punch fight (tap = punch, swipe = dodge/parry).
+var _swipe_start: Vector2 = Vector2.ZERO
+var _swipe_t: float = 0.0
+const SWIPE_MIN := 90.0
 const DODGE_WINDOW := 0.40
 
 # Mid-fight transformation: at 50% HP an enrage-flagged boss speeds up, scowls
@@ -522,7 +526,7 @@ func _ready() -> void:
 	_buttons["A"] = _make_face_button("A", Color(0.20, 0.70, 0.25), Vector2(cx, cy + rr))
 	_buttons["X"] = _make_face_button("X", Color(0.20, 0.45, 0.85), Vector2(cx - rr, cy))
 	_buttons["B"] = _make_face_button("B", Color(0.82, 0.22, 0.20), Vector2(cx + rr, cy))
-	($Safe/Hint as Label).text = "Click the boss — anywhere.        A · B  =  body        X · Y  =  head"
+	($Safe/Hint as Label).text = "TAP to punch   ·   SWIPE ← → ↓ to dodge   ·   SWIPE ↑ to parry"
 
 	# Big combo counter, right side of the screen.
 	_combo_label = Label.new()
@@ -822,8 +826,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif _gimmick() == "moon":
 				if event.pressed:
 					_moon_tap()
-			elif event.pressed:
-				_punch_click(mp)
+			else:
+				# Punch fight: a TAP punches where you touched, a SWIPE dodges
+				# (left/right/down) or parries (up). Makes the fight playable on
+				# a phone with no keyboard.
+				if event.pressed:
+					_swipe_start = mp
+					_swipe_t = _clock
+				else:
+					_resolve_swipe(mp)
 
 # Click/tap anywhere: throw a fist at that exact point. Hits on the boss deal
 # damage; clicks in open air still swing (and whiff).
@@ -4536,3 +4547,30 @@ func _run_counter() -> void:
 	_counter_spr.visible = false
 	_counter_t = randf_range(4.0, 6.5)
 	_counter_busy = false
+
+# Resolve a touch release in a punch fight: short movement = a tap (punch at the
+# point), a fast flick past SWIPE_MIN = a directional swipe (dodge, or parry on
+# an up-swipe). This is the mobile control scheme - no keyboard needed.
+func _resolve_swipe(release_pos: Vector2) -> void:
+	var delta := release_pos - _swipe_start
+	var dur := _clock - _swipe_t
+	if delta.length() < SWIPE_MIN or dur > 0.5:
+		_punch_click(_swipe_start)      # a tap: punch where it started
+		# A held touch releases any swipe-dodge lean.
+		if _dodge_holding:
+			_dodge_lift(_dodge_dir)
+		return
+	# A flick: pick the dominant axis.
+	if absf(delta.x) > absf(delta.y):
+		_dodge_press(-1 if delta.x < 0.0 else 1)
+		# Auto-release the swipe-dodge shortly after (touch has no key-up hold).
+		get_tree().create_timer(0.34, true, false, true).timeout.connect(func() -> void:
+			if _dodge_holding:
+				_dodge_lift(_dodge_dir))
+	elif delta.y > 0.0:
+		_dodge_press(0)                 # swipe down = duck
+		get_tree().create_timer(0.34, true, false, true).timeout.connect(func() -> void:
+			if _dodge_holding:
+				_dodge_lift(_dodge_dir))
+	else:
+		_parry()                        # swipe up = parry
