@@ -261,7 +261,7 @@ const LEVELS := [
 	 "bg": "res://assets/scenes/gas_station.png",
 	 "line": "Premium effort? On regular pay? Dream on."},
 	{"name": "Library", "mood": "bright", "hp": 230.0, "pace": 1.1, "dmg": 10.0, "gimmick": "punch",
-	 "bg": "res://assets/scenes/library.png",
+	 "bg": "res://assets/scenes/library.png", "shush": true,
 	 "line": "Shhh. Your career is overdue."},
 	{"name": "Lawyer Office", "mood": "tense", "hp": 280.0, "pace": 0.9, "dmg": 14.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/lawyer_office.png", "enrage": true,
@@ -632,6 +632,7 @@ func _process(delta: float) -> void:
 		else:
 			_update_fight(delta)
 			_update_hazard(delta)   # environmental hazards layer on punch fights
+			_update_noise(delta)    # library SHHH meter decays when you pause
 
 	# Idle life + any in-flight animation offsets, composed onto the bones.
 	if rig_anim != null:
@@ -1059,6 +1060,7 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 	# Score: damage scaled by the multiplier, bonus for criticals and frenzy.
 	var tier_mul: float = _combo_tier(combo)[2]
 	var gained := int(roundf(dmg * 10.0 * combo_mul * tier_mul * (2.0 if crit else 1.0)))
+	_add_noise(11.0 if crit else 8.0)
 	_add_score(gained, impact)
 	if frenzy <= 0.0:
 		_set_rage(rage + (13.0 if crit else 5.0))
@@ -2379,6 +2381,11 @@ func _start_fight() -> void:
 	_enraged = false
 	_hits_this_fight = 0
 	_reset_hazard()
+	_build_noise_meter()
+	_noise = 0.0
+	if _noise_bar != null:
+		_update_noise_bar()
+	_set_noise_visible(_has_shush())
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.idle_amp = 1.0
@@ -4156,3 +4163,97 @@ func _run_hazard(h: Dictionary) -> void:
 	_hazard_spr.visible = false
 	_hazard_t = randf_range(float(h.get("period", [5.0, 8.0])[0]), float(h.get("period", [5.0, 8.0])[1]))
 	_hazard_busy = false
+
+# --- library "SHHH!" meter --------------------------------------------------
+# Comedy mechanic for the library: every punch is NOISE. The meter fills as you
+# pound away and decays when you pause. Max it out and the librarian shushes -
+# a piercing SHHH!, your combo resets, and you eat a brief penalty. So the
+# library wants controlled, paced aggression rather than a mash.
+var _noise: float = 0.0
+var _noise_bar: Panel
+var _noise_label: Label
+const NOISE_MAX := 100.0
+
+func _has_shush() -> bool:
+	return bool(_level_cfg().get("shush", false))
+
+func _build_noise_meter() -> void:
+	if _noise_bar != null:
+		return
+	var track := Panel.new()
+	track.anchor_left = 1.0
+	track.anchor_right = 1.0
+	track.offset_left = -430.0
+	track.offset_right = -30.0
+	track.offset_top = 150.0
+	track.offset_bottom = 184.0
+	track.z_index = 41
+	var track_sb := (ko_fill.get_parent() as Panel).get_theme_stylebox("panel")
+	track.add_theme_stylebox_override("panel", track_sb)
+	safe.add_child(track)
+	_noise_bar = Panel.new()
+	_noise_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_noise_bar.anchor_right = 0.0
+	var fill_sb := StyleBoxFlat.new()
+	fill_sb.bg_color = Color(0.95, 0.35, 0.2)
+	fill_sb.set_corner_radius_all(13)
+	_noise_bar.add_theme_stylebox_override("panel", fill_sb)
+	track.add_child(_noise_bar)
+	_noise_label = Label.new()
+	_noise_label.text = "NOISE"
+	_noise_label.add_theme_font_size_override("font_size", 24)
+	_noise_label.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	_noise_label.add_theme_constant_override("outline_size", 8)
+	_noise_label.anchor_left = 1.0
+	_noise_label.anchor_right = 1.0
+	_noise_label.offset_left = -430.0
+	_noise_label.offset_right = -300.0
+	_noise_label.offset_top = 116.0
+	safe.add_child(_noise_label)
+	_noise_bar.get_parent().visible = false
+	_noise_label.visible = false
+
+func _set_noise_visible(v: bool) -> void:
+	if _noise_bar != null:
+		_noise_bar.get_parent().visible = v
+	if _noise_label != null:
+		_noise_label.visible = v
+
+func _add_noise(amount: float) -> void:
+	if not _has_shush() or _koing:
+		return
+	_noise = clampf(_noise + amount, 0.0, NOISE_MAX)
+	_update_noise_bar()
+	if _noise >= NOISE_MAX:
+		_librarian_shush()
+
+func _update_noise_bar() -> void:
+	if _noise_bar != null:
+		_noise_bar.anchor_right = _noise / NOISE_MAX
+		_noise_bar.offset_right = 0.0
+		var m := _noise / NOISE_MAX
+		var sb := _noise_bar.get_theme_stylebox("panel") as StyleBoxFlat
+		if sb != null:
+			sb.bg_color = Color(0.5, 0.8, 0.3).lerp(Color(1.0, 0.2, 0.15), m)
+
+func _update_noise(delta: float) -> void:
+	if not _has_shush() or _koing:
+		return
+	if _noise > 0.0:
+		_noise = maxf(0.0, _noise - 22.0 * delta)   # quiets down when you pause
+		_update_noise_bar()
+
+func _librarian_shush() -> void:
+	_noise = 0.0
+	_update_noise_bar()
+	combo = 0
+	_flash_screen(0.5)
+	_shake(20.0, 0.5)
+	_spawn_text(Vector2(960.0, 320.0), "SHHH!!", 150, Color(0.95, 0.35, 0.2))
+	_say("This is a LIBRARY. Use your INSIDE fists.")
+	# Brief penalty window: punches don't land while you're being shushed.
+	_punch_cd = 1.1
+	player_hp = maxf(0.0, player_hp - 6.0)
+	_set_player_hp(player_hp)
+	if player_hp <= 0.0:
+		_game_over()
