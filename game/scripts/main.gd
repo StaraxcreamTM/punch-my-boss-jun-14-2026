@@ -97,7 +97,7 @@ const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
 # --- screens / phases ------------------------------------------------------
-enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, AWARDS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, AWARDS, STATS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
 var phase: int = Phase.TITLE
 var _screen: Control
 var _screen_dim: ColorRect
@@ -116,6 +116,8 @@ var stat_damage: int = 0
 var stat_kos: int = 0
 var stat_fired: int = 0
 var stat_best_combo: int = 0
+var stat_worst_day: int = 0        # most damage dealt to a boss in one fight
+var _fight_damage: int = 0         # running damage this fight, for worst_day
 var _score_shown: float = 0.0     # eased toward `score` so the readout rolls up
 # Gate on how fast punches can be thrown. Without it, mashing (or an
 # autoclicker) farmed unlimited combo and made the guard/tell/dodge loop
@@ -1086,6 +1088,8 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 	var dmg := maxf(1.0, roundf(base * combo_mul * (1.35 if frenzy > 0.0 else 1.0)))
 	_set_hp(hp - dmg)
 	stat_damage += int(dmg)
+	_fight_damage += int(dmg)
+	stat_worst_day = maxi(stat_worst_day, _fight_damage)
 	stat_best_combo = maxi(stat_best_combo, combo)
 	_spawn_text(impact + Vector2(randf_range(-20.0, 20.0), -50.0), str(int(dmg)),
 		64 if crit else 44, Color(1, 0.32, 0.21) if crit else Color(1, 1, 1))
@@ -2011,10 +2015,12 @@ func _demo_tour() -> void:
 				3:
 					open_menu(Phase.AWARDS)
 				4:
+					open_menu(Phase.STATS)
+				5:
 					open_menu(Phase.OPTIONS)
 				_:
 					_on_play()
-		Phase.LEVELS, Phase.OPTIONS, Phase.AWARDS:
+		Phase.LEVELS, Phase.OPTIONS, Phase.AWARDS, Phase.STATS:
 			open_menu(Phase.MENU)
 		Phase.CUSTOMIZE:
 			# Exercise the cycle buttons before moving on.
@@ -2258,6 +2264,7 @@ func _load_prefs() -> void:
 	stat_kos = int(cfg.get_value("stats", "kos", 0))
 	stat_fired = int(cfg.get_value("stats", "fired", 0))
 	stat_best_combo = int(cfg.get_value("stats", "best_combo", 0))
+	stat_worst_day = int(cfg.get_value("stats", "worst_day", 0))
 	_crit_total = int(cfg.get_value("stats", "crits", 0))
 	awards_earned.clear()
 	for id in cfg.get_value("awards", "earned", []):
@@ -2285,6 +2292,7 @@ func _save_prefs() -> void:
 	cfg.set_value("stats", "kos", stat_kos)
 	cfg.set_value("stats", "fired", stat_fired)
 	cfg.set_value("stats", "best_combo", stat_best_combo)
+	cfg.set_value("stats", "worst_day", stat_worst_day)
 	cfg.set_value("stats", "crits", _crit_total)
 	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
@@ -2457,6 +2465,7 @@ func _start_fight() -> void:
 	_koing = false
 	_enraged = false
 	_hits_this_fight = 0
+	_fight_damage = 0
 	_reset_hazard()
 	_reset_counter()
 	_setup_pump()
@@ -3808,6 +3817,8 @@ func open_menu(kind: int) -> void:
 			_populate_options()
 		Phase.AWARDS:
 			_populate_awards()
+		Phase.STATS:
+			_populate_stats()
 
 func close_menu() -> void:
 	_menu.visible = false
@@ -3844,6 +3855,9 @@ func _populate_main() -> void:
 		Color(0.82, 0.55, 0.12))
 	aw.pressed.connect(func() -> void: open_menu(Phase.AWARDS))
 	_menu_rows.add_child(aw)
+	var stx := _menu_button("YOUR RECORD", Color(0.20, 0.55, 0.62))
+	stx.pressed.connect(func() -> void: open_menu(Phase.STATS))
+	_menu_rows.add_child(stx)
 	var op := _menu_button("OPTIONS", Color(0.35, 0.33, 0.42))
 	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
 	_menu_rows.add_child(op)
@@ -3976,6 +3990,44 @@ func _populate_awards() -> void:
 		if got:
 			b.tooltip_text = String(a["desc"])
 		grid.add_child(b)
+
+func _populate_stats() -> void:
+	_menu_title.text = "YOUR RECORD"
+	_menu_rows.offset_top = 200.0
+	# The stress-relief scoreboard: lifetime totals that feed the fantasy
+	# directly. One card per stat, two columns.
+	var rows := [
+		["Rank", _rank_title()],
+		["Grievance points", "%d" % grievance_points],
+		["Daily streak", "%d day%s" % [daily_streak, "" if daily_streak == 1 else "s"]],
+		["Bosses knocked out", "%d" % stat_kos],
+		["Bosses fired", "%d" % stat_fired],
+		["Total punches thrown", "%d" % stat_punches],
+		["Total damage dealt", "%d" % stat_damage],
+		["Boss's worst day", "%d in one fight" % stat_worst_day],
+		["Longest combo", "%dx" % stat_best_combo],
+		["Critical hits", "%d" % _crit_total],
+		["Best score", "%d" % best_score],
+	]
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 24)
+	grid.add_theme_constant_override("v_separation", 10)
+	_menu_rows.add_child(grid)
+	for r in rows:
+		var name_lbl := Label.new()
+		name_lbl.text = String(r[0])
+		name_lbl.add_theme_font_size_override("font_size", 34)
+		name_lbl.add_theme_color_override("font_color", Color(0.72, 0.76, 0.90))
+		name_lbl.custom_minimum_size = Vector2(560, 54)
+		grid.add_child(name_lbl)
+		var val_lbl := Label.new()
+		val_lbl.text = String(r[1])
+		val_lbl.add_theme_font_size_override("font_size", 34)
+		val_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.4))
+		val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		val_lbl.custom_minimum_size = Vector2(360, 54)
+		grid.add_child(val_lbl)
 
 func _populate_options() -> void:
 	_menu_title.text = "OPTIONS"

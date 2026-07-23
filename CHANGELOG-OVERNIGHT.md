@@ -337,3 +337,13 @@ means something. Rank + points + "N to next" show on the main menu; crossing a
 threshold on a daily reward fires a "PROMOTED" toast under the reward toast.
 No new art (deliberately — pure text, nothing to mismatch). Menu filmstrip-
 verified; headless parse clean.
+
+## v0.65 — "Your Record" stats screen
+
+A dedicated lifetime scoreboard (MAKE-IT-SELLABLE §3 stat-tracking) reached from
+a new teal main-menu button. Shows rank, grievance points, daily streak, bosses
+KO'd/fired, total punches, total damage, **boss's worst day** (a new stat:
+most damage dealt in a single fight), longest combo, crits, and best score.
+Two-column card layout, gold values. The worst-day stat tracks a per-fight
+damage accumulator reset at fight start and persists under [stats]. Filmstrip-
+verified both the menu button and the screen; headless parse clean.
