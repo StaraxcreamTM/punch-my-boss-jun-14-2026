@@ -226,6 +226,46 @@ const LEVELS := [
 	{"name": "Moonshot", "hp": 320.0, "pace": 1.2, "dmg": 0.0, "gimmick": "moon",
 	 "bg": "res://assets/scenes/sky.png", "bg_toon": false,
 	 "line": "They said reach for the stars. I meant it as a metaphor. STOP—"},
+	# --- themed scaffold levels (10-20) ---------------------------------------
+	# Each points at a backdrop that doesn't exist yet: until the art lands, a
+	# missing bg falls back to the office WITH A WARNING (see _apply_level_scene),
+	# so these are all playable now as standard fights in the office. When the
+	# scene art + themed boss art arrive, drop the png in assets/scenes/ and the
+	# character into the roster - no code change. Placeholder gimmick "punch" and
+	# a one-line tell each.
+	{"name": "Nurses' Station", "hp": 240.0, "pace": 1.0, "dmg": 12.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/nurses_station.png", "enrage": true,
+	 "line": "Say aah. Now say 'I accept this pay cut'."},
+	{"name": "Police Station", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/police_station.png",
+	 "line": "You have the right to remain... doing overtime."},
+	{"name": "Construction Site", "hp": 300.0, "pace": 0.9, "dmg": 15.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/construction_site.png", "enrage": true,
+	 "line": "Where's your hard hat? Where's your WILL TO LIVE?"},
+	{"name": "Fast Food Chain", "hp": 220.0, "pace": 1.05, "dmg": 11.0, "gimmick": "objects",
+	 "bg": "res://assets/scenes/fast_food.png",
+	 "line": "You want fries with that write-up?"},
+	{"name": "Gas Station", "hp": 250.0, "pace": 1.0, "dmg": 13.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/gas_station.png",
+	 "line": "Premium effort? On regular pay? Dream on."},
+	{"name": "Library", "hp": 230.0, "pace": 1.1, "dmg": 10.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/library.png",
+	 "line": "Shhh. Your career is overdue."},
+	{"name": "Lawyer Office", "hp": 280.0, "pace": 0.9, "dmg": 14.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/lawyer_office.png", "enrage": true,
+	 "line": "I'll see you in court. And in the parking lot."},
+	{"name": "Hospital", "hp": 300.0, "pace": 0.85, "dmg": 15.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/hospital.png", "enrage": true,
+	 "line": "This won't hurt me a bit."},
+	{"name": "School", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/school.png",
+	 "line": "Detention. For you. Forever."},
+	{"name": "College", "hp": 300.0, "pace": 0.85, "dmg": 16.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/college.png", "enrage": true,
+	 "line": "This is a pass/fail course. You're failing."},
+	{"name": "University", "hp": 340.0, "pace": 0.8, "dmg": 17.0, "gimmick": "punch",
+	 "bg": "res://assets/scenes/university.png", "enrage": true,
+	 "line": "Publish or perish. Preferably perish."},
 ]
 
 # Bag-shuffle picker: a category works through every line before any repeats,
@@ -271,6 +311,20 @@ const ROSTER := {
 	7: {"who": "Yolanda, Regional Dir.", "char": "suit_w2"},
 	8: {"who": "Big Terry, Ops", "char": "big"},
 	9: {"who": "Keisha, HR Partner", "char": "tank_w2"},
+	# Themed opponents for the scaffold levels. Name only for now (no "char"),
+	# so they use the player's own boss until their character art is rigged -
+	# add "char" here when it lands, nothing else changes.
+	10: {"who": "Nurse Payne"},
+	11: {"who": "Sgt. Bill Boyle"},
+	12: {"who": "Foreman Duke"},
+	13: {"who": "Manager Chad"},
+	14: {"who": "Gus, Station Owner"},
+	15: {"who": "Ms. Shush, Head Librarian"},
+	16: {"who": "Mr. Sue, Esq."},
+	17: {"who": "Dr. Payne, Chief of Med."},
+	18: {"who": "Principal Vex"},
+	19: {"who": "Prof. Tenure"},
+	20: {"who": "Dean Loomis"},
 }
 
 # Swap in this level's opponent. Levels absent from ROSTER restore the player's
@@ -3471,33 +3525,46 @@ func _on_play() -> void:
 
 func _populate_levels() -> void:
 	_menu_title.text = "LEVEL SELECT"
-	_menu_rows.add_theme_constant_override("separation", 10)
-	_menu_rows.offset_top = 200.0
-	for i in LEVELS.size():
-		var n := i + 1
-		var cfg: Dictionary = LEVELS[i]
+	_menu_rows.offset_top = 180.0
+	# Two-column grid: with 20+ levels a single column overflows the screen, so
+	# lay them out in columns of ~10. Each cell is a fixed-width level button.
+	var grid := GridContainer.new()
+	var rows_per_col := 10
+	grid.columns = int(ceil(float(LEVELS.size()) / float(rows_per_col)))
+	grid.add_theme_constant_override("h_separation", 20)
+	grid.add_theme_constant_override("v_separation", 8)
+	_menu_rows.add_child(grid)
+	# Fill column-major so 1-10 are the left column, 11-20 the right.
+	var order: Array = []
+	for c in grid.columns:
+		for rr in rows_per_col:
+			var idx := c * rows_per_col + rr
+			if idx < LEVELS.size():
+				order.append(idx)
+	for i in order:
+		var n := int(i) + 1
+		var cfg: Dictionary = LEVELS[int(i)]
 		var who := "Your Boss"
 		var r: Dictionary = ROSTER.get(n, {})
 		if not r.is_empty():
 			who = String(r.get("who", who))
 		var locked := n > unlocked
-		var label := "%d.  %s  -  %s" % [n, String(cfg.get("name", "")), who]
+		var label := "%d. %s" % [n, String(cfg.get("name", ""))]
 		if locked:
-			label = "%d.   L O C K E D" % n
+			label = "%d.  LOCKED" % n
 		var col := Color(0.20, 0.45, 0.85)
 		if locked:
 			col = Color(0.17, 0.16, 0.21)
 		elif n == level:
 			col = Color(0.20, 0.70, 0.25)
 		var b := _menu_button(label, col)
-		b.add_theme_font_size_override("font_size", 30)
-		# 9 rows at the default height overflowed the screen: rows 8-9 fell off
-		# the bottom and BACK sat on top of row 7.
-		b.custom_minimum_size = Vector2(0, 70)
+		b.add_theme_font_size_override("font_size", 26)
+		b.custom_minimum_size = Vector2(540, 60)
+		b.tooltip_text = who
 		b.disabled = locked
 		if not locked:
 			b.pressed.connect(_on_pick_level.bind(n))
-		_menu_rows.add_child(b)
+		grid.add_child(b)
 
 func _on_pick_level(n: int) -> void:
 	level = n
