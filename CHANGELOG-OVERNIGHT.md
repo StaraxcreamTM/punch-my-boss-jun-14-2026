@@ -347,3 +347,22 @@ most damage dealt in a single fight), longest combo, crits, and best score.
 Two-column card layout, gold values. The worst-day stat tracks a per-fight
 damage accumulator reset at fight start and persists under [stats]. Filmstrip-
 verified both the menu button and the screen; headless parse clean.
+
+## v0.66 — Endless Survival mode
+
+The best-score chase finally has a mode built around it (MAKE-IT-SELLABLE §1
+"no reason to replay"). A back-to-back gauntlet of random bosses drawn from the
+boxing-style levels (punch/basic/double/feint/rage - setpiece gimmicks are
+skipped so the rhythm holds). Each cleared round ramps boss HP (+22%/round) and
+damage (+15%/round); your HP carries between rounds with a 25%-of-max heal per
+clear, so it's a survival run, not 20 independent fights. A "ROUND N" banner
+marks each round; the gameover reports "SURVIVED N" and tracks a best-run stat.
+Reached from a new orange main-menu button (shows your best run) and shown on
+the Your Record screen.
+
+Implementation: `_start_fight` gained a `reset_player_hp` flag for carry-over;
+boss HP/damage scale via `_hp_mul`/`_dmg_mul` (reset to 1.0 on any normal fight).
+Runtime-verified by routing the demo into Endless - fights, scaling, mid-run
+opponent swaps and round transitions all ran clean. Menu row height trimmed
+108->92 and the rank footer moved to Your Record so 8 buttons fit the 1080
+canvas and a portrait phone (verified at 1080x1920).

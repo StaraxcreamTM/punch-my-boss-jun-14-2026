@@ -118,6 +118,12 @@ var stat_fired: int = 0
 var stat_best_combo: int = 0
 var stat_worst_day: int = 0        # most damage dealt to a boss in one fight
 var _fight_damage: int = 0         # running damage this fight, for worst_day
+var stat_endless_best: int = 0     # furthest round reached in Endless mode
+# --- endless / survival mode ---
+var _endless: bool = false
+var _endless_round: int = 0
+var _hp_mul: float = 1.0           # boss HP scale (endless ramps this)
+var _dmg_mul: float = 1.0          # boss damage scale (endless ramps this)
 var _score_shown: float = 0.0     # eased toward `score` so the readout rolls up
 # Gate on how fast punches can be thrown. Without it, mashing (or an
 # autoclicker) farmed unlimited combo and made the guard/tell/dodge loop
@@ -1344,7 +1350,7 @@ func _resolve_attack() -> void:
 func _hit_player() -> void:
 	_buzz(80)
 	_hits_this_fight += 1        # a landed boss punch: no longer flawless
-	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0))
+	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0) * _dmg_mul)
 	_flash_screen(0.42)
 	_shake(30.0, 0.4)
 	_hitstop(0.08)
@@ -1549,6 +1555,9 @@ func _knockout() -> void:
 	_check_awards()
 	_save_prefs()
 	_koing = false
+	if _endless:
+		_endless_next_round()
+		return
 	if _shot_mode:
 		# Keep the filmstrip demo fighting instead of parking on a screen.
 		_start_fight()
@@ -2265,6 +2274,7 @@ func _load_prefs() -> void:
 	stat_fired = int(cfg.get_value("stats", "fired", 0))
 	stat_best_combo = int(cfg.get_value("stats", "best_combo", 0))
 	stat_worst_day = int(cfg.get_value("stats", "worst_day", 0))
+	stat_endless_best = int(cfg.get_value("stats", "endless_best", 0))
 	_crit_total = int(cfg.get_value("stats", "crits", 0))
 	awards_earned.clear()
 	for id in cfg.get_value("awards", "earned", []):
@@ -2293,6 +2303,7 @@ func _save_prefs() -> void:
 	cfg.set_value("stats", "fired", stat_fired)
 	cfg.set_value("stats", "best_combo", stat_best_combo)
 	cfg.set_value("stats", "worst_day", stat_worst_day)
+	cfg.set_value("stats", "endless_best", stat_endless_best)
 	cfg.set_value("stats", "crits", _crit_total)
 	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
@@ -2427,6 +2438,10 @@ func _difficulty_name() -> String:
 
 # The pre-fight beat: he gets a line in before the bell.
 func _start_prefight() -> void:
+	# Starting a normal fight from the menu leaves Endless and clears its scaling.
+	_endless = false
+	_hp_mul = 1.0
+	_dmg_mul = 1.0
 	close_menu()
 	phase = Phase.PREFIGHT
 	_set_hud_visible(false)
@@ -2448,7 +2463,7 @@ func _start_prefight() -> void:
 	if rig_anim != null:
 		rig_anim.point_at_player()
 
-func _start_fight() -> void:
+func _start_fight(reset_player_hp: bool = true) -> void:
 	close_menu()
 	phase = Phase.FIGHT
 	_set_hud_visible(true)
@@ -2456,9 +2471,10 @@ func _start_fight() -> void:
 	_screen.visible = false
 	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.82)
 	var cfg := _level_cfg()
-	hp_max = float(cfg.get("hp", 120.0))
+	hp_max = float(cfg.get("hp", 120.0)) * _hp_mul
 	_set_hp(hp_max)
-	_set_player_hp(player_hp_max)
+	if reset_player_hp:
+		_set_player_hp(player_hp_max)
 	_set_rage(0.0)
 	combo = 0
 	frenzy = 0.0
@@ -2514,10 +2530,17 @@ func _start_fight() -> void:
 			_enter_guard()
 
 func _show_gameover(won: bool) -> void:
+	# Endless can only end on a loss (a win rolls into the next round), so an
+	# Endless gameover reports how far the survival run got.
+	var was_endless := _endless
+	var rounds := _endless_round
 	if won:
 		_complete_daily(_hits_this_fight == 0)
 	else:
 		_daily_active = false
+	_endless = false
+	_hp_mul = 1.0
+	_dmg_mul = 1.0
 	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)
@@ -2525,6 +2548,14 @@ func _show_gameover(won: bool) -> void:
 	_set_hud_visible(false)
 	boss_line.get_parent().visible = false
 	_screen.visible = true
+	if was_endless:
+		_screen_title.text = "SURVIVED %d" % rounds
+		_screen_title.offset_top = 180.0
+		_screen_title.offset_bottom = 340.0
+		_screen_sub.text = "You lasted %d round%s.\nbest run %d      score %d" % \
+			[rounds, "" if rounds == 1 else "s", stat_endless_best, score]
+		_screen_hint.text = "tap to continue"
+		return
 	_screen_title.text = "YOU WIN" if won else "YOU'RE FIRED"
 	_screen_title.offset_top = 180.0
 	_screen_title.offset_bottom = 340.0
@@ -3675,7 +3706,7 @@ func play_entrance() -> void:
 # Touch-first: every row is a full-width button with a large tap target, since
 # Android is the target and thumbs are imprecise. The title screen is the front
 # door; everything else hangs off the main menu.
-const MENU_ROW_H := 108.0
+const MENU_ROW_H := 92.0
 const MENU_W := 1120.0
 # Customise two-column layout: left options column width, and how far the boss
 # preview shifts right (into the clear half) so the option rows never cover him.
@@ -3837,6 +3868,12 @@ func _populate_main() -> void:
 	var lv := _menu_button("LEVEL SELECT")
 	lv.pressed.connect(func() -> void: open_menu(Phase.LEVELS))
 	_menu_rows.add_child(lv)
+	var en_label := "ENDLESS SURVIVAL"
+	if stat_endless_best > 0:
+		en_label += "   (best: round %d)" % stat_endless_best
+	var en := _menu_button(en_label, Color(0.86, 0.42, 0.16))
+	en.pressed.connect(_start_endless)
+	_menu_rows.add_child(en)
 	# Daily grievance: one challenge a day. Shows "done" once claimed.
 	if _daily_done_today():
 		var dg := _menu_button("DAILY GRIEVANCE  -  DONE  (streak %d)" % daily_streak,
@@ -3861,17 +3898,8 @@ func _populate_main() -> void:
 	var op := _menu_button("OPTIONS", Color(0.35, 0.33, 0.42))
 	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
 	_menu_rows.add_child(op)
-	var st := Label.new()
-	var rank_line := "RANK: %s   ·   %d grievance pts" % [_rank_title(), grievance_points]
-	if _rank_to_next() > 0:
-		rank_line += "   (%d to next)" % _rank_to_next()
-	st.text = "%s\nBEST %d      %d punches thrown      %d K.O.s" % [rank_line, best_score, stat_punches, stat_kos]
-	st.add_theme_font_size_override("font_size", 32)
-	st.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
-	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	st.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	st.custom_minimum_size = Vector2(0, 96)
-	_menu_rows.add_child(st)
+	# Rank/points footer moved to the YOUR RECORD screen: with 8 buttons a footer
+	# would push the list past the 1080 canvas (and off a portrait phone).
 
 func _on_play() -> void:
 	close_menu()
@@ -4000,6 +4028,7 @@ func _populate_stats() -> void:
 		["Rank", _rank_title()],
 		["Grievance points", "%d" % grievance_points],
 		["Daily streak", "%d day%s" % [daily_streak, "" if daily_streak == 1 else "s"]],
+		["Endless best", "round %d" % stat_endless_best],
 		["Bosses knocked out", "%d" % stat_kos],
 		["Bosses fired", "%d" % stat_fired],
 		["Total punches thrown", "%d" % stat_punches],
@@ -4650,6 +4679,63 @@ func _resolve_swipe(release_pos: Vector2) -> void:
 				_dodge_lift(_dodge_dir))
 	else:
 		_parry()                        # swipe up = parry
+
+# --- endless / survival mode ------------------------------------------------
+# A back-to-back gauntlet of random bosses that get tougher every round, so the
+# best-score chase finally has a mode built around it. Reuses the whole fight
+# loop; only the boss HP/damage scale and the win-goes-to-next-round wiring are
+# new. HP carries between rounds with a small heal per clear - that carry-over
+# is what makes it a survival run instead of 20 independent fights.
+
+# The boxing-style levels only: setpiece gimmicks (car, moon, bridge...) are
+# one-off spectacles that would break the back-to-back rhythm.
+const ENDLESS_GIMMICKS := ["punch", "basic", "double", "feint", "rage"]
+
+func _endless_pool() -> Array:
+	var pool: Array = []
+	for i in range(1, LEVELS.size() + 1):
+		var g := String((LEVELS[i - 1] as Dictionary).get("gimmick", "punch"))
+		if g in ENDLESS_GIMMICKS:
+			pool.append(i)
+	if pool.is_empty():
+		pool.append(1)
+	return pool
+
+func _rand_endless_level() -> int:
+	var pool := _endless_pool()
+	return int(pool[randi() % pool.size()])
+
+func _start_endless() -> void:
+	_endless = true
+	_endless_round = 1
+	_hp_mul = 1.0
+	_dmg_mul = 1.0
+	difficulty = Difficulty.BRAWLER    # survival only makes sense if he hits back
+	level = _rand_endless_level()
+	_apply_opponent()
+	close_menu()
+	_set_player_hp(player_hp_max)
+	_endless_banner()
+	_start_fight()
+
+func _endless_next_round() -> void:
+	_endless_round += 1
+	# Ramp: each round the boss is tougher and hits harder.
+	_hp_mul = 1.0 + 0.22 * float(_endless_round - 1)
+	_dmg_mul = 1.0 + 0.15 * float(_endless_round - 1)
+	if _endless_round > stat_endless_best:
+		stat_endless_best = _endless_round
+		_save_prefs()
+	# Clearing a round heals a quarter of your bar - a breather, not a full reset.
+	var healed := minf(player_hp_max, player_hp + player_hp_max * 0.25)
+	level = _rand_endless_level()
+	_apply_opponent()
+	_endless_banner()
+	_set_player_hp(healed)
+	_start_fight(false)
+
+func _endless_banner() -> void:
+	_spawn_text(Vector2(960.0, 300.0), "ROUND %d" % _endless_round, 110, Color(1.0, 0.55, 0.16))
 
 # --- daily grievance (retention) --------------------------------------------
 # One challenge a day, picked deterministically from the calendar date: beat a
