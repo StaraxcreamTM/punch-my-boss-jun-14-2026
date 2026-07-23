@@ -313,3 +313,17 @@ a cover-crop stretch — worth knowing before the orientation decision.
 - Unused so far: the **punch**, **walking** and **KO'd-on-ground** poses. The KO
   pose especially would suit `_knockout()` better than launching the rigged
   figure offscreen.
+
+## v0.63 — daily grievance (retention)
+
+A once-a-day challenge on the main menu (MAKE-IT-SELLABLE §3). The date seeds
+which level and which flavour challenge ("Model Employee", "Performance review",
+etc.) deterministically, so everyone gets the same one that day with no server.
+Beating it grants **grievance points** (a currency) and builds a **daily
+streak**; staying flawless doubles the reward. Streak only continues if the
+previous claim was literally yesterday (unix-day math), else resets to 1.
+
+Persisted under `[daily]` in the save file. Menu shows the live challenge in red,
+or a greyed-out "DONE (streak N)" once claimed. A reward toast + floating
+"+N GRIEVANCE" fires on completion. Points shown in the menu stats line.
+Filmstrip-verified the menu button renders; headless parse clean.

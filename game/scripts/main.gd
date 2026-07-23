@@ -2272,6 +2272,9 @@ func _load_prefs() -> void:
 	_own_hair = look_hair
 	_own_moustache = look_moustache
 	portrait = bool(cfg.get_value("settings", "portrait", false))
+	grievance_points = int(cfg.get_value("daily", "points", 0))
+	daily_streak = int(cfg.get_value("daily", "streak", 0))
+	_daily_last = str(cfg.get_value("daily", "last", ""))
 
 func _save_prefs() -> void:
 	var cfg := ConfigFile.new()
@@ -2291,6 +2294,9 @@ func _save_prefs() -> void:
 	cfg.set_value("look", "hair", _own_hair)
 	cfg.set_value("look", "moustache", _own_moustache)
 	cfg.set_value("settings", "portrait", portrait)
+	cfg.set_value("daily", "points", grievance_points)
+	cfg.set_value("daily", "streak", daily_streak)
+	cfg.set_value("daily", "last", _daily_last)
 	cfg.save(SAVE_PATH)
 
 # --- screens / game phases --------------------------------------------------
@@ -2499,6 +2505,10 @@ func _start_fight() -> void:
 			_enter_guard()
 
 func _show_gameover(won: bool) -> void:
+	if won:
+		_complete_daily(_hits_this_fight == 0)
+	else:
+		_daily_active = false
 	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)
@@ -3816,6 +3826,17 @@ func _populate_main() -> void:
 	var lv := _menu_button("LEVEL SELECT")
 	lv.pressed.connect(func() -> void: open_menu(Phase.LEVELS))
 	_menu_rows.add_child(lv)
+	# Daily grievance: one challenge a day. Shows "done" once claimed.
+	if _daily_done_today():
+		var dg := _menu_button("DAILY GRIEVANCE  -  DONE  (streak %d)" % daily_streak,
+			Color(0.28, 0.30, 0.36))
+		dg.disabled = true
+		_menu_rows.add_child(dg)
+	else:
+		var dg := _menu_button("DAILY: %s  (Lv %d)" % [_daily_challenge(), _daily_level()],
+			Color(0.86, 0.32, 0.30))
+		dg.pressed.connect(_start_daily)
+		_menu_rows.add_child(dg)
 	var cu := _menu_button("CUSTOMISE YOUR BOSS", Color(0.62, 0.28, 0.72))
 	cu.pressed.connect(func() -> void: open_menu(Phase.CUSTOMIZE))
 	_menu_rows.add_child(cu)
@@ -3827,7 +3848,7 @@ func _populate_main() -> void:
 	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
 	_menu_rows.add_child(op)
 	var st := Label.new()
-	st.text = "BEST %d      %d punches thrown      %d K.O.s" % [best_score, stat_punches, stat_kos]
+	st.text = "BEST %d      %d punches thrown      %d K.O.s      %d grievance pts" % [best_score, stat_punches, stat_kos, grievance_points]
 	st.add_theme_font_size_override("font_size", 32)
 	st.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
 	st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -4574,3 +4595,106 @@ func _resolve_swipe(release_pos: Vector2) -> void:
 				_dodge_lift(_dodge_dir))
 	else:
 		_parry()                        # swipe up = parry
+
+# --- daily grievance (retention) --------------------------------------------
+# One challenge a day, picked deterministically from the calendar date: beat a
+# rotating level, extra reward for staying flawless. Completing it grants
+# "grievance points" (a currency) and builds a daily streak. Cheap retention,
+# no server - the date comes from the system clock.
+const DAILY_CHALLENGES := [
+	"Clock out early: just win.",
+	"Model Employee: win without being hit for double reward.",
+	"No sick days: win it in one go.",
+	"Performance review: beat your best score here.",
+	"Overtime: survive the whole fight.",
+]
+var grievance_points: int = 0
+var daily_streak: int = 0
+var _daily_last: String = ""       # yyyy-mm-dd of last completion
+var _daily_active: bool = false
+
+func _today_str() -> String:
+	var d := Time.get_date_dict_from_system()
+	return "%04d-%02d-%02d" % [d.year, d.month, d.day]
+
+func _yesterday_str() -> String:
+	var now := Time.get_unix_time_from_system()
+	var d := Time.get_date_dict_from_unix_time(int(now) - 86400)
+	return "%04d-%02d-%02d" % [d.year, d.month, d.day]
+
+func _day_seed() -> int:
+	var d := Time.get_date_dict_from_system()
+	return d.year * 10000 + d.month * 100 + d.day
+
+func _daily_level() -> int:
+	return (_day_seed() % LEVELS.size()) + 1
+
+func _daily_challenge() -> String:
+	return DAILY_CHALLENGES[_day_seed() % DAILY_CHALLENGES.size()]
+
+func _daily_done_today() -> bool:
+	return _daily_last == _today_str()
+
+func _start_daily() -> void:
+	if _daily_done_today():
+		return
+	_daily_active = true
+	level = _daily_level()
+	close_menu()
+	_start_prefight()
+
+# Called on a win; if it was the daily and not yet claimed today, reward it.
+func _complete_daily(was_flawless: bool) -> void:
+	if not _daily_active or _daily_done_today():
+		_daily_active = false
+		return
+	_daily_active = false
+	# Streak continues only if the last completion was exactly yesterday.
+	if _daily_last == _yesterday_str():
+		daily_streak += 1
+	else:
+		daily_streak = 1
+	_daily_last = _today_str()
+	var reward := 50 + daily_streak * 10
+	if was_flawless:
+		reward *= 2
+	grievance_points += reward
+	_save_prefs()
+	_spawn_text(Vector2(960.0, 360.0), "+%d GRIEVANCE" % reward, 80, Color(1, 0.7, 0.16))
+	_award_toast_text("DAILY GRIEVANCE", "Streak %d  ·  +%d points" % [daily_streak, reward])
+
+# Generic toast (the achievement toast, reusable for the daily reward).
+func _award_toast_text(head_text: String, body_text: String) -> void:
+	var toast := Panel.new()
+	toast.z_index = 98
+	toast.anchor_left = 0.5
+	toast.anchor_right = 0.5
+	toast.offset_left = -360.0
+	toast.offset_right = 360.0
+	toast.offset_top = 40.0
+	toast.offset_bottom = 168.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.98, 0.96, 0.86)
+	sb.set_corner_radius_all(14)
+	sb.set_border_width_all(5)
+	sb.border_color = Color(0.82, 0.2, 0.18)
+	toast.add_theme_stylebox_override("panel", sb)
+	safe.add_child(toast)
+	var head := Label.new()
+	head.text = head_text
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color(0.82, 0.2, 0.18))
+	head.position = Vector2(28, 16)
+	toast.add_child(head)
+	var body := Label.new()
+	body.text = body_text
+	body.add_theme_font_size_override("font_size", 38)
+	body.add_theme_color_override("font_color", Color(0.1, 0.08, 0.12))
+	body.position = Vector2(28, 54)
+	toast.add_child(body)
+	toast.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(toast, "modulate:a", 1.0, 0.25)
+	tw.tween_interval(2.6)
+	tw.tween_property(toast, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(toast.queue_free)
