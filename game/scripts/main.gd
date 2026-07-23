@@ -97,7 +97,7 @@ const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
 # --- screens / phases ------------------------------------------------------
-enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, AWARDS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
 var phase: int = Phase.TITLE
 var _screen: Control
 var _screen_dim: ColorRect
@@ -374,6 +374,11 @@ func _ready() -> void:
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_load_prefs()
+	# Retroactively grant any stat-based awards a returning player already earned
+	# before the system existed (suppress the toast flood on this first pass).
+	_awards_silent = true
+	_check_awards()
+	_awards_silent = false
 	_setup_shots()
 
 	_punch_player = AudioStreamPlayer.new()
@@ -760,7 +765,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Touches arrive here too via Godot's emulate_mouse_from_touch.
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			var mp := get_global_mouse_position()
-			if phase in [Phase.MENU, Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS]:
+			if phase in [Phase.MENU, Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS, Phase.AWARDS]:
 				pass          # menu buttons handle their own taps
 			elif phase != Phase.FIGHT:
 				if event.pressed:
@@ -1013,6 +1018,9 @@ func _apply_damage(impact: Vector2, base: float, crit: bool) -> void:
 		_combo_label.scale = Vector2.ONE * 1.45
 	if crit:
 		crits += 1
+		_crit_total += 1
+	if combo >= 20:
+		_check_awards()          # combo milestones announce as you cross them
 	# Multiplier climbs to 4x. It can go this high because the punch cooldown
 	# means a long combo has to be *earned* on timing rather than farmed by
 	# mashing - which is what the old 1.8x ceiling was compensating for.
@@ -1224,6 +1232,7 @@ func _resolve_attack() -> void:
 
 func _hit_player() -> void:
 	_buzz(80)
+	_hits_this_fight += 1        # a landed boss punch: no longer flawless
 	player_hp = maxf(0.0, player_hp - _level_cfg().get("dmg", 10.0))
 	_flash_screen(0.42)
 	_shake(30.0, 0.4)
@@ -1406,6 +1415,13 @@ func _knockout() -> void:
 	if rig_anim != null:
 		rig_anim.own_body = true
 	stat_kos += 1
+	# Award checks that only a win can trip.
+	_grant("first_ko")
+	if _hits_this_fight == 0:
+		_grant("flawless")
+	if difficulty == Difficulty.BRAWLER:
+		_grant("brawler")
+	_check_awards()
 	_save_prefs()
 	_koing = false
 	if _shot_mode:
@@ -1806,10 +1822,12 @@ func _demo_tour() -> void:
 				2:
 					open_menu(Phase.CUSTOMIZE)
 				3:
+					open_menu(Phase.AWARDS)
+				4:
 					open_menu(Phase.OPTIONS)
 				_:
 					_on_play()
-		Phase.LEVELS, Phase.OPTIONS:
+		Phase.LEVELS, Phase.OPTIONS, Phase.AWARDS:
 			open_menu(Phase.MENU)
 		Phase.CUSTOMIZE:
 			# Exercise the cycle buttons before moving on.
@@ -2013,6 +2031,10 @@ func _load_prefs() -> void:
 	stat_kos = int(cfg.get_value("stats", "kos", 0))
 	stat_fired = int(cfg.get_value("stats", "fired", 0))
 	stat_best_combo = int(cfg.get_value("stats", "best_combo", 0))
+	_crit_total = int(cfg.get_value("stats", "crits", 0))
+	awards_earned.clear()
+	for id in cfg.get_value("awards", "earned", []):
+		awards_earned[String(id)] = true
 	haptics_on = bool(cfg.get_value("settings", "haptics", true))
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
@@ -2033,6 +2055,8 @@ func _save_prefs() -> void:
 	cfg.set_value("stats", "kos", stat_kos)
 	cfg.set_value("stats", "fired", stat_fired)
 	cfg.set_value("stats", "best_combo", stat_best_combo)
+	cfg.set_value("stats", "crits", _crit_total)
+	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
@@ -2168,6 +2192,7 @@ func _start_fight() -> void:
 	frenzy = 0.0
 	_koing = false
 	_enraged = false
+	_hits_this_fight = 0
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.idle_amp = 1.0
@@ -3486,6 +3511,8 @@ func open_menu(kind: int) -> void:
 			_populate_customize()
 		Phase.OPTIONS:
 			_populate_options()
+		Phase.AWARDS:
+			_populate_awards()
 
 func close_menu() -> void:
 	_menu.visible = false
@@ -3507,6 +3534,10 @@ func _populate_main() -> void:
 	var cu := _menu_button("CUSTOMISE YOUR BOSS", Color(0.62, 0.28, 0.72))
 	cu.pressed.connect(func() -> void: open_menu(Phase.CUSTOMIZE))
 	_menu_rows.add_child(cu)
+	var aw := _menu_button("AWARDS   (%d / %d)" % [awards_earned.size(), ACHIEVEMENTS.size()],
+		Color(0.82, 0.55, 0.12))
+	aw.pressed.connect(func() -> void: open_menu(Phase.AWARDS))
+	_menu_rows.add_child(aw)
 	var op := _menu_button("OPTIONS", Color(0.35, 0.33, 0.42))
 	op.pressed.connect(func() -> void: open_menu(Phase.OPTIONS))
 	_menu_rows.add_child(op)
@@ -3615,6 +3646,27 @@ func _on_cycle(what: String, title: String, lbl: Button) -> void:
 	cycle_look(what)
 	if is_instance_valid(lbl):
 		lbl.text = "%s:  %s" % [title, _look_value(what)]
+
+func _populate_awards() -> void:
+	_menu_title.text = "AWARDS"
+	_menu_rows.offset_top = 180.0
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 20)
+	grid.add_theme_constant_override("v_separation", 8)
+	_menu_rows.add_child(grid)
+	for a in ACHIEVEMENTS:
+		var got: bool = awards_earned.has(a["id"])
+		# Earned: gold with the title. Locked: dim with the how-to.
+		var label := ("* %s" % a["title"]) if got else ("- %s" % a["desc"])
+		var col := Color(0.82, 0.55, 0.12) if got else Color(0.20, 0.19, 0.24)
+		var b := _menu_button(label, col)
+		b.add_theme_font_size_override("font_size", 24)
+		b.custom_minimum_size = Vector2(540, 62)
+		b.disabled = true
+		if got:
+			b.tooltip_text = String(a["desc"])
+		grid.add_child(b)
 
 func _populate_options() -> void:
 	_menu_title.text = "OPTIONS"
@@ -3733,3 +3785,96 @@ func _update_anim(delta: float) -> void:
 				_anim_done.call()
 			return
 		_show_anim_frame()
+
+# --- awards / achievements --------------------------------------------------
+# Office-satire achievement titles, persisted, shown in the AWARDS menu and
+# announced with a toast when earned. Conditions are checked at the moments
+# that can trip them (a KO, a combo change, a fight won).
+const ACHIEVEMENTS := [
+	{"id": "first_ko", "title": "Employee of the Month", "desc": "Land your first K.O."},
+	{"id": "combo20", "title": "Overachiever", "desc": "Reach a 20-hit combo."},
+	{"id": "combo50", "title": "Workplace Hazard", "desc": "Reach a 50-hit combo."},
+	{"id": "flawless", "title": "Model Employee", "desc": "Win a fight without being hit."},
+	{"id": "brawler", "title": "No Notice Given", "desc": "K.O. a boss on Brawler."},
+	{"id": "punches1k", "title": "Repeat Offender", "desc": "Throw 1,000 punches."},
+	{"id": "damage10k", "title": "Going Postal", "desc": "Deal 10,000 total damage."},
+	{"id": "crits100", "title": "Sharp Elbows", "desc": "Land 100 critical hits."},
+	{"id": "roster9", "title": "Corner Office", "desc": "Beat the first nine bosses."},
+	{"id": "level20", "title": "Tenured", "desc": "Reach the final level."},
+]
+var awards_earned: Dictionary = {}
+var _crit_total: int = 0            # lifetime crits, persisted
+var _hits_this_fight: int = 0       # for the flawless check
+var _awards_silent: bool = false    # suppress toasts (retroactive grant on load)
+
+func _grant(id: String) -> void:
+	if awards_earned.has(id):
+		return
+	awards_earned[id] = true
+	_save_prefs()
+	if not _awards_silent:
+		_award_toast(id)
+
+func _title_of(id: String) -> String:
+	for a in ACHIEVEMENTS:
+		if a["id"] == id:
+			return String(a["title"])
+	return id
+
+# Check everything whose condition can currently be true. Cheap - runs on the
+# events that matter, not every frame.
+func _check_awards() -> void:
+	if stat_kos >= 1:
+		_grant("first_ko")
+	if max_combo >= 20 or stat_best_combo >= 20:
+		_grant("combo20")
+	if max_combo >= 50 or stat_best_combo >= 50:
+		_grant("combo50")
+	if stat_punches >= 1000:
+		_grant("punches1k")
+	if stat_damage >= 10000:
+		_grant("damage10k")
+	if _crit_total >= 100:
+		_grant("crits100")
+	if unlocked >= 10:      # cleared 9 -> unlocked advanced to 10
+		_grant("roster9")
+	if unlocked >= 20:
+		_grant("level20")
+
+# A sliding office-memo toast that announces the award, then fades.
+func _award_toast(id: String) -> void:
+	var toast := Panel.new()
+	toast.z_index = 98
+	toast.anchor_left = 0.5
+	toast.anchor_right = 0.5
+	toast.offset_left = -360.0
+	toast.offset_right = 360.0
+	toast.offset_top = 40.0
+	toast.offset_bottom = 168.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.98, 0.96, 0.86)
+	sb.set_corner_radius_all(14)
+	sb.set_border_width_all(5)
+	sb.border_color = Color(0.82, 0.2, 0.18)
+	toast.add_theme_stylebox_override("panel", sb)
+	safe.add_child(toast)
+	var head := Label.new()
+	head.text = "* ACHIEVEMENT UNLOCKED *"
+	head.add_theme_font_size_override("font_size", 24)
+	head.add_theme_color_override("font_color", Color(0.82, 0.2, 0.18))
+	head.position = Vector2(28, 16)
+	toast.add_child(head)
+	var body := Label.new()
+	body.text = _title_of(id)
+	body.add_theme_font_size_override("font_size", 40)
+	body.add_theme_color_override("font_color", Color(0.1, 0.08, 0.12))
+	body.position = Vector2(28, 52)
+	toast.add_child(body)
+	toast.modulate.a = 0.0
+	toast.position.y = -60.0
+	var tw := create_tween()
+	tw.tween_property(toast, "modulate:a", 1.0, 0.25)
+	tw.parallel().tween_property(toast, "position:y", 0.0, 0.3).set_trans(Tween.TRANS_BACK)
+	tw.tween_interval(2.4)
+	tw.tween_property(toast, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(toast.queue_free)
