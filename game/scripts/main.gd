@@ -252,6 +252,7 @@ const LEVELS := [
 	 "line": "You have the right to remain... doing overtime."},
 	{"name": "Construction Site", "mood": "heavy", "hp": 300.0, "pace": 0.9, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/construction_site.png", "enrage": true,
+	 "hazard": {"sprite": "ibeam", "axis": "h", "period": [4.5, 7.0], "warn": 0.8, "dmg": 16.0},
 	 "line": "Where's your hard hat? Where's your WILL TO LIVE?"},
 	{"name": "Fast Food Chain", "mood": "bright", "hp": 220.0, "pace": 1.05, "dmg": 11.0, "gimmick": "objects",
 	 "bg": "res://assets/scenes/fast_food.png",
@@ -267,9 +268,11 @@ const LEVELS := [
 	 "line": "I'll see you in court. And in the parking lot."},
 	{"name": "Hospital", "mood": "tense", "hp": 300.0, "pace": 0.85, "dmg": 15.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/hospital.png", "enrage": true,
+	 "hazard": {"sprite": "gurney", "axis": "h", "period": [5.0, 8.0], "warn": 0.7, "dmg": 14.0},
 	 "line": "This won't hurt me a bit."},
 	{"name": "School", "mood": "bright", "hp": 260.0, "pace": 0.95, "dmg": 13.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/school.png",
+	 "hazard": {"sprite": "eraser", "axis": "drop", "period": [3.5, 6.0], "warn": 0.55, "dmg": 10.0},
 	 "line": "Detention. For you. Forever."},
 	{"name": "College", "mood": "grand", "hp": 300.0, "pace": 0.85, "dmg": 16.0, "gimmick": "punch",
 	 "bg": "res://assets/scenes/college.png", "enrage": true,
@@ -628,6 +631,7 @@ func _process(delta: float) -> void:
 			_update_gimmick(delta)
 		else:
 			_update_fight(delta)
+			_update_hazard(delta)   # environmental hazards layer on punch fights
 
 	# Idle life + any in-flight animation offsets, composed onto the bones.
 	if rig_anim != null:
@@ -2374,6 +2378,7 @@ func _start_fight() -> void:
 	_koing = false
 	_enraged = false
 	_hits_this_fight = 0
+	_reset_hazard()
 	if rig_anim != null:
 		rig_anim.revive()
 		rig_anim.idle_amp = 1.0
@@ -4067,3 +4072,87 @@ func _award_toast(id: String) -> void:
 	tw.tween_interval(2.4)
 	tw.tween_property(toast, "modulate:a", 0.0, 0.4)
 	tw.tween_callback(toast.queue_free)
+
+# --- environmental hazards --------------------------------------------------
+# A reusable sweep hazard layered on top of a normal punch fight. On a timer it
+# warns, then a themed object sweeps across (I-beam, gurney) or drops (eraser);
+# if the player isn't dodging at the strike moment it costs health and the
+# combo. One system themes construction / hospital / school. A level opts in
+# with a "hazard" dict: {sprite, axis: "h"|"drop", period: [lo,hi], warn, dmg}.
+var _hazard_t: float = 0.0
+var _hazard_spr: Sprite2D
+var _hazard_busy: bool = false
+
+func _hazard_cfg() -> Dictionary:
+	return _level_cfg().get("hazard", {})
+
+func _reset_hazard() -> void:
+	var h := _hazard_cfg()
+	_hazard_busy = false
+	if not h.is_empty():
+		_hazard_t = randf_range(2.0, 3.5)
+	if _hazard_spr != null:
+		_hazard_spr.visible = false
+
+func _update_hazard(delta: float) -> void:
+	var h := _hazard_cfg()
+	if h.is_empty() or _koing or _hazard_busy:
+		return
+	_hazard_t -= delta
+	if _hazard_t <= 0.0:
+		_run_hazard(h)
+
+func _run_hazard(h: Dictionary) -> void:
+	_hazard_busy = true
+	var path := "res://assets/hazards/%s.png" % String(h.get("sprite", "ibeam"))
+	if not ResourceLoader.exists(path):
+		_reset_hazard()
+		return
+	if _hazard_spr == null:
+		_hazard_spr = Sprite2D.new()
+		_hazard_spr.z_index = 30
+		safe.add_child(_hazard_spr)
+	_hazard_spr.texture = load(path)
+	_hazard_spr.visible = true
+	var axis := String(h.get("axis", "h"))
+	var warn := float(h.get("warn", 0.7))
+	# Warning tell: a flashing arrow-word where it will come from.
+	var from_left := randf() < 0.5
+	_spawn_text(Vector2(960.0, 250.0), "LOOK OUT!", 84, Color(1, 0.3, 0.2))
+	_shake(4.0, 0.2)
+	await get_tree().create_timer(warn, true, false, true).timeout
+	var vw := 1920.0
+	var tw := create_tween()
+	if axis == "drop":
+		_hazard_spr.scale = Vector2(2.4, 2.4)
+		_hazard_spr.position = Vector2(randf_range(500.0, 1420.0), -200.0)
+		tw.tween_property(_hazard_spr, "position:y", 1160.0, 0.34).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	else:
+		_hazard_spr.scale = Vector2(2.2 * (1.0 if from_left else -1.0), 2.2)
+		var y := 620.0
+		_hazard_spr.position = Vector2(-500.0 if from_left else vw + 500.0, y)
+		tw.tween_property(_hazard_spr, "position:x", vw + 500.0 if from_left else -500.0, 0.5) \
+			.set_trans(Tween.TRANS_QUAD)
+	# Danger check partway through the sweep.
+	var hit_delay := 0.14 if axis == "drop" else 0.24
+	await get_tree().create_timer(hit_delay, true, false, true).timeout
+	# Dodging (any direction) clears a sweep; ducking clears a drop.
+	var safe_now := _dodge_time > 0.0
+	if not safe_now:
+		_flash_screen(0.4)
+		_shake(26.0, 0.4)
+		_hitstop(0.06)
+		_spawn_text(Vector2(960.0, 440.0), "CLONK!", 90, Color(1, 0.3, 0.25))
+		combo = 0
+		player_hp = maxf(0.0, player_hp - float(h.get("dmg", 12.0)))
+		_set_player_hp(player_hp)
+		if _crowd_player != null:
+			_crowd_player.play()
+		if player_hp <= 0.0:
+			_game_over()
+	else:
+		_spawn_text(Vector2(960.0, 420.0), "DODGED!", 72, Color(0.6, 1.0, 0.7))
+	await tw.finished
+	_hazard_spr.visible = false
+	_hazard_t = randf_range(float(h.get("period", [5.0, 8.0])[0]), float(h.get("period", [5.0, 8.0])[1]))
+	_hazard_busy = false
