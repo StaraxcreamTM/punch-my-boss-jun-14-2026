@@ -456,3 +456,12 @@ regardless of _pose_name. The anim-end path routes through it too. Audited the
 other handoffs (entrance walk, guard/palm/recoil poses, floored KO, expression
 swaps) - all clear the same way now. Reproduced the exact double at level 1
 (boss2 charge intro) and filmstrip-verified it's gone across a full fight.
+
+## v0.75 — blend rig<->overlay handoffs (crossfade)
+
+Follow-up to the two-bosses fix: the pose/anim overlay <-> rig handoff was a hard
+cut. Now set_pose("") dissolves the outgoing pose sprite out over 0.12s while the
+rig shows underneath, so intro->fight, KO->recover and pose->rig transitions fade
+instead of popping. The fade is cancelled/alpha-reset wherever the pose sprite is
+re-shown (set_pose, _show_ko_floor, play_anim) so a new pose never inherits a
+half-faded state. Filmstrip-verified: single boss throughout, no ghosting.

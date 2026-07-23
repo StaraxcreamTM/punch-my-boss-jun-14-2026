@@ -3874,6 +3874,9 @@ func _show_ko_floor() -> void:
 		rig.add_child(_pose_spr)
 	_pose_name = "@ko"
 	_anim_playing = false
+	if _pose_fade_tw != null and _pose_fade_tw.is_valid():
+		_pose_fade_tw.kill()
+	_pose_spr.modulate.a = 1.0
 	_set_rig_visible(false)
 	var tex: Texture2D = load(path)
 	_pose_spr.texture = tex
@@ -3895,21 +3898,29 @@ func set_pose(name: String) -> void:
 		# Cancel any playing intro/anim: otherwise _update_anim re-shows _pose_spr
 		# every frame and it draws on top of the now-visible rig (two bosses).
 		_anim_playing = false
-		if _pose_spr != null and is_instance_valid(_pose_spr):
-			_pose_spr.visible = false
 		_set_rig_visible(true)
+		# Crossfade the outgoing pose/anim frame out over the now-visible rig, so
+		# the system handoff (intro->fight, KO->recover, pose->rig) dissolves
+		# instead of hard-cutting. Only when a pose sprite was actually up.
+		if _pose_spr != null and is_instance_valid(_pose_spr) and _pose_spr.visible:
+			_crossfade_pose_out()
 		return
 	if name == _pose_name:
 		return
 	if not has_pose(name):
 		return                      # character has no art for this pose
 	_pose_name = name
+	# Cancel any in-flight fade-out and restore full alpha; this pose reuses the
+	# same sprite and must not inherit a half-faded state.
+	if _pose_fade_tw != null and _pose_fade_tw.is_valid():
+		_pose_fade_tw.kill()
 	if _pose_spr == null:
 		_pose_spr = Sprite2D.new()
 		_pose_spr.centered = false
 		_pose_spr.z_index = 20
 		_pose_spr.material = _outline_mat
 		rig.add_child(_pose_spr)
+	_pose_spr.modulate.a = 1.0
 	var tex: Texture2D = load("%s/%s.png" % [_pose_dir(), name])
 	_pose_spr.texture = tex
 	# Every pose is drawn at the same figure scale, so one scale keeps him
@@ -3924,6 +3935,25 @@ func set_pose(name: String) -> void:
 	_pose_spr.visible = true
 	_pose_t = 0.0
 	_set_rig_visible(false)
+
+var _pose_fade_tw: Tween
+
+# Dissolve the pose sprite out over the rig that's now showing underneath. Kills
+# any in-flight fade first so rapid handoffs don't fight, and always restores the
+# sprite's alpha to 1 when done (a later pose reuses the same sprite).
+func _crossfade_pose_out() -> void:
+	if _pose_spr == null or not is_instance_valid(_pose_spr):
+		return
+	if _pose_fade_tw != null and _pose_fade_tw.is_valid():
+		_pose_fade_tw.kill()
+	var spr := _pose_spr
+	spr.modulate.a = 1.0
+	_pose_fade_tw = create_tween()
+	_pose_fade_tw.tween_property(spr, "modulate:a", 0.0, 0.12)
+	_pose_fade_tw.tween_callback(func() -> void:
+		if is_instance_valid(spr):
+			spr.visible = false
+			spr.modulate.a = 1.0)
 
 func _set_rig_visible(v: bool) -> void:
 	for s in _char_sprites:
@@ -4506,6 +4536,9 @@ func play_anim(name: String, fps: float, done: Callable = Callable()) -> void:
 		_pose_spr.material = _outline_mat
 		rig.add_child(_pose_spr)
 	_pose_name = "@anim"
+	if _pose_fade_tw != null and _pose_fade_tw.is_valid():
+		_pose_fade_tw.kill()
+	_pose_spr.modulate.a = 1.0
 	_set_rig_visible(false)
 	_anim_i = 0
 	_anim_t = 0.0
