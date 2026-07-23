@@ -179,6 +179,8 @@ var music_on: bool = true
 # costs nothing to leave on.
 var haptics_on: bool = true
 var seen_howto: bool = false       # first-launch tutorial card shown once
+var adaptive_enabled: bool = true  # the "smarter boss" can be switched off
+var master_vol: float = 1.0        # 0..1, applied to the Master audio bus
 
 func _buzz(ms: int) -> void:
 	if not haptics_on:
@@ -421,6 +423,7 @@ func _ready() -> void:
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_load_prefs()
+	_apply_volume()
 	# Retroactively grant any stat-based awards a returning player already earned
 	# before the system existed (suppress the toast flood on this first pass).
 	_awards_silent = true
@@ -1230,7 +1233,19 @@ func _update_fight(delta: float) -> void:
 
 # Adaptive only kicks in when the boss actually fights back.
 func _adaptive_on() -> bool:
-	return difficulty == Difficulty.BRAWLER
+	return adaptive_enabled and difficulty == Difficulty.BRAWLER
+
+# Master-bus volume. 0 mutes; otherwise mapped through linear_to_db so the
+# steps sound evenly spaced rather than bunched near the top.
+func _apply_volume() -> void:
+	var idx := AudioServer.get_bus_index("Master")
+	if idx < 0:
+		return
+	if master_vol <= 0.001:
+		AudioServer.set_bus_mute(idx, true)
+	else:
+		AudioServer.set_bus_mute(idx, false)
+		AudioServer.set_bus_volume_db(idx, linear_to_db(master_vol))
 
 # Push the skill read toward a target by a step, clamped to [0,1].
 func _nudge_skill(delta: float) -> void:
@@ -2491,6 +2506,8 @@ func _load_prefs() -> void:
 		awards_earned[String(id)] = true
 	haptics_on = bool(cfg.get_value("settings", "haptics", true))
 	seen_howto = bool(cfg.get_value("settings", "seen_howto", false))
+	adaptive_enabled = bool(cfg.get_value("settings", "adaptive", true))
+	master_vol = clampf(float(cfg.get_value("settings", "volume", 1.0)), 0.0, 1.0)
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
 	look_skin = int(cfg.get_value("look", "skin", 0))
@@ -2520,6 +2537,8 @@ func _save_prefs() -> void:
 	cfg.set_value("awards", "earned", awards_earned.keys())
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.set_value("settings", "seen_howto", seen_howto)
+	cfg.set_value("settings", "adaptive", adaptive_enabled)
+	cfg.set_value("settings", "volume", master_vol)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("look", "skin", _own_skin)
@@ -4291,10 +4310,16 @@ func _populate_stats() -> void:
 
 func _populate_options() -> void:
 	_menu_title.text = "OPTIONS"
+	_menu_rows.add_theme_constant_override("separation", 12)
 	var mus := _menu_button("MUSIC:  %s" % ("ON" if music_on else "OFF"),
 		Color(0.20, 0.70, 0.25) if music_on else Color(0.35, 0.33, 0.42))
 	mus.pressed.connect(_on_toggle_music)
 	_menu_rows.add_child(mus)
+
+	var vol := _menu_button("VOLUME:  %d%%" % int(round(master_vol * 100.0)),
+		Color(0.20, 0.55, 0.62) if master_vol > 0.0 else Color(0.35, 0.33, 0.42))
+	vol.pressed.connect(_on_cycle_volume)
+	_menu_rows.add_child(vol)
 
 	var hap := _menu_button("VIBRATION:  %s" % ("ON" if haptics_on else "OFF"),
 		Color(0.20, 0.70, 0.25) if haptics_on else Color(0.35, 0.33, 0.42))
@@ -4306,17 +4331,22 @@ func _populate_options() -> void:
 	dif.pressed.connect(_on_cycle_difficulty)
 	_menu_rows.add_child(dif)
 
+	# Adaptive difficulty toggle - only meaningful on Brawler, but always shown
+	# so players know the option exists.
+	var adp := _menu_button("SMART BOSS:  %s" % ("ON" if adaptive_enabled else "OFF"),
+		Color(0.20, 0.70, 0.25) if adaptive_enabled else Color(0.35, 0.33, 0.42))
+	adp.pressed.connect(_on_toggle_adaptive)
+	_menu_rows.add_child(adp)
+
 	var howto := _menu_button("HOW TO PLAY", Color(0.20, 0.55, 0.62))
 	howto.pressed.connect(func() -> void: _show_howto(false))
 	_menu_rows.add_child(howto)
 
-	var hint := Label.new()
-	hint.text = "Punching Bag - he never fights back.\nDefensive - he guards, but won't swing.\nBrawler - he hits back, so dodge."
-	hint.add_theme_font_size_override("font_size", 30)
-	hint.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.custom_minimum_size = Vector2(0, 160)
-	_menu_rows.add_child(hint)
+	var reset := _menu_button("RESET PROGRESS", Color(0.72, 0.26, 0.24))
+	reset.pressed.connect(_on_reset_progress)
+	_menu_rows.add_child(reset)
+	# (No footer hint here: the bottom-anchored BACK button would overlap it.
+	# SMART BOSS / DIFFICULTY labels are self-explanatory enough.)
 
 func _on_toggle_music() -> void:
 	toggle_music()
@@ -4326,6 +4356,99 @@ func _on_toggle_haptics() -> void:
 	haptics_on = not haptics_on
 	_save_prefs()
 	open_menu(Phase.OPTIONS)
+
+const VOLUME_STEPS := [1.0, 0.75, 0.5, 0.25, 0.0]
+
+func _on_cycle_volume() -> void:
+	# Step to the next preset, snapping to the nearest current value first.
+	var best := 0
+	var bd := 9.0
+	for i in range(VOLUME_STEPS.size()):
+		var d: float = absf(float(VOLUME_STEPS[i]) - master_vol)
+		if d < bd:
+			bd = d
+			best = i
+	master_vol = float(VOLUME_STEPS[(best + 1) % VOLUME_STEPS.size()])
+	_apply_volume()
+	_save_prefs()
+	open_menu(Phase.OPTIONS)
+
+func _on_toggle_adaptive() -> void:
+	adaptive_enabled = not adaptive_enabled
+	_save_prefs()
+	open_menu(Phase.OPTIONS)
+
+func _on_reset_progress() -> void:
+	_ensure_reset_ui()
+	_reset_overlay.visible = true
+
+# Wipe progress/stats/awards/currency but KEEP settings (audio, difficulty,
+# haptics, seen_howto). The confirm dialog gates this - an accidental tap here
+# would otherwise erase everything.
+func _do_reset_progress() -> void:
+	best_score = 0
+	unlocked = 1
+	level = 1
+	stat_punches = 0
+	stat_damage = 0
+	stat_kos = 0
+	stat_fired = 0
+	stat_best_combo = 0
+	stat_worst_day = 0
+	stat_endless_best = 0
+	_crit_total = 0
+	awards_earned.clear()
+	grievance_points = 0
+	daily_streak = 0
+	_daily_last = ""
+	adapt_baseline = 0.5
+	_save_prefs()
+	if _reset_overlay != null:
+		_reset_overlay.visible = false
+	open_menu(Phase.MENU)
+
+var _reset_overlay: Control
+
+func _ensure_reset_ui() -> void:
+	if _reset_overlay != null:
+		return
+	_reset_overlay = Control.new()
+	_reset_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_reset_overlay.z_index = 126
+	_reset_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_reset_overlay.visible = false
+	add_child(_reset_overlay)
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.03, 0.08, 0.9)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_reset_overlay.add_child(dim)
+	var title := _big_label(72, Color(1, 0.5, 0.4), 0.0)
+	title.text = "RESET PROGRESS?"
+	title.offset_top = 300.0
+	title.offset_bottom = 400.0
+	_reset_overlay.add_child(title)
+	var body := _big_label(36, Color(0.9, 0.92, 1.0), 0.0)
+	body.text = "This clears your levels, stats, awards and\ngrievance points. Settings are kept."
+	body.offset_top = 420.0
+	body.offset_bottom = 540.0
+	_reset_overlay.add_child(body)
+	var vb := HBoxContainer.new()
+	vb.add_theme_constant_override("separation", 40)
+	vb.anchor_left = 0.5
+	vb.anchor_right = 0.5
+	vb.offset_left = -520.0
+	vb.offset_right = 520.0
+	vb.offset_top = 580.0
+	vb.alignment = BoxContainer.ALIGNMENT_CENTER
+	_reset_overlay.add_child(vb)
+	var cancel := _menu_button("CANCEL", Color(0.35, 0.33, 0.42))
+	cancel.custom_minimum_size = Vector2(440, MENU_ROW_H)
+	cancel.pressed.connect(func() -> void: _reset_overlay.visible = false)
+	vb.add_child(cancel)
+	var yes := _menu_button("RESET", Color(0.72, 0.26, 0.24))
+	yes.custom_minimum_size = Vector2(440, MENU_ROW_H)
+	yes.pressed.connect(_do_reset_progress)
+	vb.add_child(yes)
 
 func _on_cycle_difficulty() -> void:
 	difficulty = (difficulty + 1) % 3

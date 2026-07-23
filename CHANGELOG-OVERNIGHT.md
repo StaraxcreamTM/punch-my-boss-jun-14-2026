@@ -418,3 +418,20 @@ Model Employee (flawless doubles the reward) / Glass Jaw (start at half health)
 date picks one; it applies only while the daily is active and clears afterward.
 DAILY_CHALLENGES is now structured data (name + php/bosshp/oneshot). Reuses the
 proven _hp_mul path (Endless) and the player-HP bar; parse + boot verified.
+
+## v0.73 — settings polish (volume, adaptive toggle, reset progress)
+
+The last of the thin pure-code backlog, bundled:
+- **Master volume** — cycles 100/75/50/25/0% (0 mutes) on the Master audio bus
+  via linear_to_db so the steps sound even; applied at launch and persisted.
+- **Smart Boss toggle** — adaptive difficulty (v0.69) can be switched off for
+  players who want fixed timing; gates _adaptive_on(), persisted.
+- **Reset Progress** — wipes levels/stats/awards/grievance points (keeps audio,
+  difficulty, haptics, seen-tutorial) behind a CANCEL/RESET confirm overlay, so
+  an accidental tap can't nuke a save.
+Options re-laid to fit seven controls on the 1080 canvas. Options screen and the
+reset-confirm overlay both filmstrip-verified; parse clean.
+
+This closes the pure-code sellability backlog. Remaining value is art-gated
+(11 backgrounds, the real Bev/Nina/Marcus/Sandra/Terry sets, 6 themed boss
+bases) pending the Chrome download unblock; holding code until it lands.
