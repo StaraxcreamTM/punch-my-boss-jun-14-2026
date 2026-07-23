@@ -613,6 +613,23 @@ func _say(text: String) -> void:
 func _next_taunt() -> void:
 	_say(_line("taunt", Dia.TAUNT))
 	_set_rage(rage + float(randi_range(6, 22)))
+	# Occasionally throw the boss's signature move with the taunt - only while
+	# guarding (a drawn pose or an in-flight attack shouldn't be interrupted).
+	if rig_anim != null and phase == Phase.FIGHT and _state == BossState.GUARD \
+			and not has_pose("guard") and randf() < 0.5:
+		rig_anim.play_signature(String(SIGNATURES.get(character, "")))
+
+# Each character's signature move, fitting their name/role.
+const SIGNATURES := {
+	"suit": "present",         # your boss: presents a slide
+	"man": "shrug",            # Marcus, Facilities: not-my-problem shrug
+	"big": "belly_bump",       # Terry, Ops: gut thrust
+	"swim": "trust_fall",      # Sandra, Retreat Coord: trust-fall lean
+	"suit_w": "synergy_clap",  # Bev, VP of Synergy
+	"suit_w2": "present",      # Yolanda, Regional Dir: presents
+	"tank_w": "shrug",         # Nina, Office Manager
+	"tank_w2": "finger_wag",   # Keisha, HR Partner: scolding wag
+}
 
 func _make_face_button(letter: String, col: Color, center: Vector2) -> Button:
 	var b := Button.new()
@@ -1220,10 +1237,12 @@ func _game_over() -> void:
 	bt.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.3) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	if rig_anim != null:
+		set_pose("")          # drop any held pose so the celebration shows
 		rig_anim.laugh()
+		rig_anim.victory_dance()
 	_flash_screen(0.5)
 	_shake(24.0, 0.5)
-	await get_tree().create_timer(2.0).timeout
+	await get_tree().create_timer(2.4).timeout
 	_show_gameover(false)
 
 # Restart the current level with everything reset.

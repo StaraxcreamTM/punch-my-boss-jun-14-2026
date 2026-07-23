@@ -766,3 +766,110 @@ func parts_launch(power: float = 1.0) -> void:
 		ts.tween_property(head_spr, "rotation", randf_range(-0.5, 0.5), 0.10)
 		ts.tween_property(head_spr, "rotation", 0.0, 0.30).set_trans(Tween.TRANS_ELASTIC)
 	pose({"spine": 0.2 * power, "chest": 0.16 * power}, 0.08, 0.12, 0.28)
+
+
+# --- victory + signature moves ---------------------------------------------
+
+# Celebration when the player loses: bouncy hops, arms pumping overhead, gloating.
+func victory_dance() -> void:
+	idle_amp = 0.4
+	var tw := create_tween()
+	for i in 4:
+		tw.tween_property(self, "body_pos", Vector2(0.0, -34.0), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(self, "body_pos", Vector2(0.0, 0.0), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func() -> void: idle_amp = 1.0)
+	# Arms pump up on each hop, hips swing.
+	var ta := create_tween()
+	for i in 4:
+		var s := 1.0 if i % 2 == 0 else -1.0
+		ta.tween_method(func(v: float) -> void:
+			_rot["uarmL"] = -1.7 + v
+			_rot["uarmR"] = 1.7 - v
+			_rot["hip"] = 0.12 * s, 0.0, 0.4, 0.11)
+		ta.tween_method(func(v: float) -> void:
+			_rot["uarmL"] = -1.3
+			_rot["uarmR"] = 1.3
+			_rot["hip"] = -0.12 * s, 0.0, 0.0, 0.11)
+	ta.tween_method(func(v: float) -> void:
+		_rot["uarmL"] = 0.0
+		_rot["uarmR"] = 0.0
+		_rot["hip"] = 0.0, 0.0, 0.0, 0.2)
+
+# --- per-character signature moves (fire as a taunt) ---
+
+# Belly bump - a big gut thrust forward (Terry, Ops).
+func sig_belly_bump() -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_scale", Vector2(0.16, -0.10), 0.14).set_trans(Tween.TRANS_QUAD)
+	tw.tween_property(self, "body_pos", Vector2(0.0, 0.0), 0.0)
+	tw.tween_property(self, "body_scale", Vector2(-0.08, 0.05), 0.18).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.2).set_trans(Tween.TRANS_ELASTIC)
+	pose({"spine": -0.14, "chest": -0.10, "uarmL": 0.4, "uarmR": -0.4}, 0.14, 0.2, 0.3)
+
+# Synergy clap - hands come together overhead in an enthusiastic double clap
+# (Bev, VP of Synergy).
+func sig_synergy_clap() -> void:
+	var tw := create_tween()
+	for i in 2:
+		tw.tween_method(func(v: float) -> void:
+			_rot["uarmL"] = 1.4
+			_rot["uarmR"] = -1.4
+			_rot["farmL"] = -1.5 + v
+			_rot["farmR"] = 1.5 - v, 0.0, 0.5, 0.09).set_trans(Tween.TRANS_EXPO)
+		tw.tween_method(func(v: float) -> void:
+			_rot["farmL"] = -1.5
+			_rot["farmR"] = 1.5, 0.0, 0.0, 0.09)
+	tw.tween_method(func(v: float) -> void:
+		_rot["uarmL"] = 0.0
+		_rot["uarmR"] = 0.0
+		_rot["farmL"] = 0.0
+		_rot["farmR"] = 0.0, 0.0, 0.0, 0.25).set_trans(Tween.TRANS_BACK)
+	pose({"head": -0.12, "chest": -0.08}, 0.1, 0.4, 0.3)
+
+# Finger wag - one arm up, scolding shake (Keisha, HR / disciplinarians).
+func sig_finger_wag() -> void:
+	var key := "uarmR"
+	if not _rot.has(key):
+		return
+	var tw := create_tween()
+	tw.tween_method(func(v: float) -> void: _rot[key] = v, 0.0, -1.9, 0.12).set_trans(Tween.TRANS_EXPO)
+	for i in 3:
+		tw.tween_method(func(v: float) -> void: _rot["farmR"] = v, 0.0, -0.5, 0.08).set_trans(Tween.TRANS_SINE)
+		tw.tween_method(func(v: float) -> void: _rot["farmR"] = v, -0.5, 0.3, 0.08).set_trans(Tween.TRANS_SINE)
+	tw.tween_method(func(v: float) -> void:
+		_rot[key] = v
+		_rot["farmR"] = 0.0, _rot[key], 0.0, 0.25).set_trans(Tween.TRANS_BACK)
+	pose({"head": -0.14, "chest": -0.10}, 0.1, 0.5, 0.3)
+
+# Clipboard point - jab a forearm forward like presenting a slide (managers).
+func sig_present() -> void:
+	pose({"uarmR": -1.4, "farmR": 1.0, "chest": -0.1, "head": 0.06}, 0.12, 0.5, 0.35)
+
+# Trust-fall lean - tips backward with arms crossed, daring you to catch
+# (Sandra, Retreat Coord).
+func sig_trust_fall() -> void:
+	pose({"spine": -0.3, "chest": -0.25, "head": -0.3,
+		"uarmL": 1.4, "farmL": -1.4, "uarmR": -1.4, "farmR": 1.4}, 0.16, 0.5, 0.4)
+	var tw := create_tween()
+	tw.tween_property(self, "body_rot", 0.12, 0.16).set_trans(Tween.TRANS_QUAD)
+	tw.tween_interval(0.5)
+	tw.tween_property(self, "body_rot", 0.0, 0.4).set_trans(Tween.TRANS_BACK)
+
+# Shrug - both shoulders up, palms out, "not my problem" (facilities/support).
+func sig_shrug() -> void:
+	pose({"uarmL": 0.7, "farmL": -0.6, "uarmR": -0.7, "farmR": 0.6,
+		"head": 0.1}, 0.14, 0.5, 0.32)
+	var tw := create_tween()
+	tw.tween_property(self, "body_pos", Vector2(0.0, -12.0), 0.14)
+	tw.tween_interval(0.5)
+	tw.tween_property(self, "body_pos", Vector2.ZERO, 0.3)
+
+func play_signature(name: String) -> void:
+	match name:
+		"belly_bump": sig_belly_bump()
+		"synergy_clap": sig_synergy_clap()
+		"finger_wag": sig_finger_wag()
+		"present": sig_present()
+		"trust_fall": sig_trust_fall()
+		"shrug": sig_shrug()
+		_: taunt()
