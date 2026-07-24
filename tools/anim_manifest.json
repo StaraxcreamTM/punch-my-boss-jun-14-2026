@@ -40,6 +40,18 @@
       "note": "Main boss JAB — wind-up jab toward camera (post 02a71d4f-aae1-4f2d-a49f-8fe8b76ac67d). Wire: main-boss attack tell / signature strike. NB: the older grok-video-52c33b12 clip is an earlier take of this same move — prefer this one.",
       "file": "",
       "match": ""
+    },
+    {
+      "slot": "boss5/anim/hurt",
+      "note": "Sandra HURT — reel-back, hair whip, dizzy wobble (post 3c9d1100-fda4-4be7-9e3f-9f9297c1375c). Sandra = 'swim' char. Wire: Sandra crit reaction / enrage-threshold stagger.",
+      "file": "",
+      "match": ""
+    },
+    {
+      "slot": "boss4/anim/taunt",
+      "note": "Marcus TAUNT — finger-wag, smug laugh, eyebrow raised (post 40398afc-069b-4db9-ad4b-b8d176c3a82d). Marcus = 'man' char. Wire: Marcus GUARD-phase signature (replaces the 'shrug' sig on 'man').",
+      "file": "",
+      "match": ""
     }
   ]
 }
