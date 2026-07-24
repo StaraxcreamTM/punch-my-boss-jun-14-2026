@@ -498,3 +498,13 @@ run the Godot import pass. Manifest pre-filled with the round-1 slots (Terry
 taunt/jab -> boss3, main-boss hurt -> boss2) and their wiring notes; each 'file'
 gets set when its mp4 lands. Verified: dry run lists all three waiting; a proof
 run sliced the validated boss clip end-to-end (self-test artifacts removed).
+
+## v0.79 — attract mode (arcade demo loop)
+
+After 14s idle on the title, the game rolls into a self-playing demo fight like
+an arcade cabinet: random boxing level, Brawler boss, auto punch/dodge/parry, and
+it loops on KO/gameover. A "◄ DEMO ► tap to play" badge shows; any press drops
+straight back to a clean title (and restores the player's real difficulty, which
+the demo temporarily forces to Brawler). Idle only accrues on the title and never
+while the how-to card is up. Added a --attract shot-harness flag to capture it;
+filmstrip-verified the loop plays with a single boss and the badge visible.

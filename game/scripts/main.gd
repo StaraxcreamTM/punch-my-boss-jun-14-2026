@@ -646,6 +646,14 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_clock += delta
 
+	# Arcade attract mode: after a spell of no input on the title, roll into a
+	# self-playing demo fight; any tap drops back to the title (handled in input).
+	if phase == Phase.TITLE and not _attract and not _shot_mode \
+			and (_howto_overlay == null or not _howto_overlay.visible):
+		_title_idle += delta
+		if _title_idle >= ATTRACT_IDLE:
+			_enter_attract()
+
 	# Typewriter reveal.
 	var total := float(_type_full.length())
 	if _type_shown < total:
@@ -778,6 +786,18 @@ func _make_face_button(letter: String, col: Color, center: Vector2) -> Button:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey or event is InputEventMouseButton 			or event is InputEventScreenTouch or event is InputEventJoypadButton:
 		_kick_music()
+		_title_idle = 0.0
+		# During attract, any press drops the demo and returns to the title -
+		# nothing else (no punch, no menu) should register.
+		if _attract:
+			var pressed: bool = (event is InputEventKey and event.pressed and not event.echo) \
+				or (event is InputEventMouseButton and event.pressed) \
+				or (event is InputEventScreenTouch and event.pressed) \
+				or (event is InputEventJoypadButton and event.pressed)
+			if pressed:
+				_exit_attract()
+				get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey:
 		# Dodge keys are HOLDABLE: begin the dodge on press, release on key-up.
 		# Handled outside the press-only block so key-up is seen.
@@ -2054,6 +2074,11 @@ func _setup_shots() -> void:
 	t.autostart = true
 	t.timeout.connect(_take_shot)
 	add_child(t)
+	# --attract: capture the arcade attract loop instead of the menu-tour demo.
+	if "--attract" in OS.get_cmdline_user_args():
+		_attract_debug = true
+		get_tree().create_timer(0.4).timeout.connect(_enter_attract)
+		return
 	var dm := Timer.new()
 	dm.wait_time = _demo_period
 	dm.autostart = true
@@ -2116,6 +2141,119 @@ func _take_shot() -> void:
 # Scripted play so the filmstrip exercises real states: body and head punches,
 # dodges in each direction, and a spell of doing nothing so the boss's own
 # attack cycle and idle life get captured too.
+# --- attract mode (arcade-cabinet demo loop) --------------------------------
+const ATTRACT_IDLE := 14.0        # seconds idle on the title before it kicks in
+var _attract: bool = false
+var _attract_step: int = 0
+var _title_idle: float = 0.0
+var _attract_timer: Timer
+var _attract_badge: Control
+var _attract_prev_diff: int = Difficulty.BRAWLER
+var _attract_debug: bool = false   # allow attract under the shot harness for capture
+
+func _enter_attract() -> void:
+	if _attract or (_shot_mode and not _attract_debug):
+		return
+	_attract = true
+	_attract_step = 0
+	_attract_prev_diff = difficulty          # restore the player's choice on exit
+	difficulty = Difficulty.BRAWLER          # lively: he fights back in the demo
+	_ensure_attract_badge()
+	_attract_badge.visible = true
+	if _attract_timer == null:
+		_attract_timer = Timer.new()
+		_attract_timer.wait_time = 0.62
+		_attract_timer.timeout.connect(_attract_tick)
+		add_child(_attract_timer)
+	_attract_timer.start()
+	_attract_new_fight()
+
+func _attract_new_fight() -> void:
+	level = _rand_endless_level()
+	_start_prefight()
+
+func _attract_tick() -> void:
+	if not _attract or _koing:
+		return
+	match phase:
+		Phase.PREFIGHT:
+			_start_fight()
+		Phase.FIGHT:
+			_attract_fight_step()
+		Phase.VICTORY, Phase.GAMEOVER:
+			_attract_new_fight()               # loop the reel
+		_:
+			_attract_new_fight()
+
+# A compact version of the shot demo's fight driving: punch, dodge, parry, super.
+func _attract_fight_step() -> void:
+	_attract_step += 1
+	if _attract_step % 5 == 0:
+		_parry()
+	if adrenaline >= ADREN_MAX:
+		_super_punch()
+	match _attract_step % 8:
+		1, 2:
+			_punch(_attract_step % 2 == 0, true)     # head
+		3:
+			_punch(true, false)                      # body
+		4:
+			_dodge_press(-1)
+			get_tree().create_timer(0.4).timeout.connect(func() -> void: _dodge_lift(-1))
+		5:
+			_punch(false, false)
+		6:
+			_dodge_press(1)
+			get_tree().create_timer(0.4).timeout.connect(func() -> void: _dodge_lift(1))
+		7:
+			_dodge_press(0)
+			get_tree().create_timer(0.35).timeout.connect(func() -> void: _dodge_lift(0))
+		_:
+			_punch(true, true)
+
+func _exit_attract() -> void:
+	if not _attract:
+		return
+	_attract = false
+	_title_idle = 0.0
+	difficulty = _attract_prev_diff          # undo the forced Brawler
+	if _attract_timer != null:
+		_attract_timer.stop()
+	if _attract_badge != null:
+		_attract_badge.visible = false
+	# Tear the demo fight down and return to a clean title.
+	_koing = false
+	set_pose("")
+	score = 0
+	_score_shown = 0.0
+	close_menu()
+	_show_title()
+
+func _ensure_attract_badge() -> void:
+	if _attract_badge != null:
+		return
+	var c := Control.new()
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.z_index = 60
+	c.visible = false
+	safe.add_child(c)
+	var lbl := Label.new()
+	lbl.text = "◄  DEMO  ►    tap to play"
+	lbl.add_theme_font_size_override("font_size", 44)
+	lbl.add_theme_color_override("font_color", Color(1, 0.86, 0.16))
+	lbl.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	lbl.add_theme_constant_override("outline_size", 12)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.anchor_left = 0.0
+	lbl.anchor_right = 1.0
+	lbl.anchor_top = 1.0
+	lbl.anchor_bottom = 1.0
+	lbl.offset_top = -120.0
+	lbl.offset_bottom = -40.0
+	c.add_child(lbl)
+	_attract_badge = c
+
 func _demo_tick() -> void:
 	if _koing:
 		return
