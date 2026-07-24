@@ -1392,6 +1392,7 @@ func _resolve_attack() -> void:
 		_atk_whiffed = true
 		_parry_time = 0.0
 		_spawn_text(Vector2(960.0, 380.0), "PARRY!", 96, Color(0.4, 0.9, 1.0))
+		_grant("parry_first")
 		_flash_screen(0.5)
 		_shake(14.0, 0.3)
 		_hitstop(0.07)
@@ -4759,6 +4760,14 @@ const ACHIEVEMENTS := [
 	{"id": "crits100", "title": "Sharp Elbows", "desc": "Land 100 critical hits."},
 	{"id": "roster9", "title": "Corner Office", "desc": "Beat the first nine bosses."},
 	{"id": "level20", "title": "Tenured", "desc": "Reach the final level."},
+	{"id": "endless5", "title": "Overtime", "desc": "Reach round 5 in Endless Survival."},
+	{"id": "endless10", "title": "Unfireable", "desc": "Reach round 10 in Endless Survival."},
+	{"id": "streak7", "title": "Grudge Holder", "desc": "Hit a 7-day Daily streak."},
+	{"id": "rank_director", "title": "Middle Management", "desc": "Earn 1,000 grievance points."},
+	{"id": "rank_vp", "title": "Executive Material", "desc": "Earn 2,400 grievance points."},
+	{"id": "parry_first", "title": "Objection!", "desc": "Land a parry."},
+	{"id": "super_first", "title": "Adrenaline Junkie", "desc": "Unleash a super punch."},
+	{"id": "worst_day", "title": "Their Worst Day", "desc": "Deal 500 damage in one fight."},
 ]
 var awards_earned: Dictionary = {}
 var _crit_total: int = 0            # lifetime crits, persisted
@@ -4798,6 +4807,18 @@ func _check_awards() -> void:
 		_grant("roster9")
 	if unlocked >= 20:
 		_grant("level20")
+	if stat_endless_best >= 5:
+		_grant("endless5")
+	if stat_endless_best >= 10:
+		_grant("endless10")
+	if daily_streak >= 7:
+		_grant("streak7")
+	if grievance_points >= 1000:
+		_grant("rank_director")
+	if grievance_points >= 2400:
+		_grant("rank_vp")
+	if stat_worst_day >= 500:
+		_grant("worst_day")
 
 # A sliding office-memo toast that announces the award, then fades.
 func _award_toast(id: String) -> void:
@@ -5085,6 +5106,7 @@ func _super_punch() -> void:
 	if adrenaline < ADREN_MAX or _koing or phase != Phase.FIGHT:
 		return
 	adrenaline = 0.0
+	_grant("super_first")
 	_update_adren_bar()
 	_flash_screen(0.8)
 	_shake(30.0, 0.5)

@@ -527,3 +527,12 @@ corkscrew (body twists up and drills round, then unwinds - added to the head-
 crit gag roll, now 10) and pancake_bounce (splat-flat then pop-and-jiggle -
 added to the body-crit roll, now 7). Both reuse the proven body_scale/body_pos/
 pose primitives; parse clean and a full fight ran error-free.
+
+## v0.82 — 8 more achievements (10 -> 18)
+
+Gave the new systems something to chase: Overtime / Unfireable (Endless round
+5 / 10), Grudge Holder (7-day Daily streak), Middle Management / Executive
+Material (1,000 / 2,400 grievance points), Objection! (land a parry), Adrenaline
+Junkie (super punch), Their Worst Day (500 damage in one fight). Stat-based ones
+join _check_awards; parry/super grant at their event sites. Awards screen still
+fits the 2-column grid (verified at 18). Menu counter updates automatically.
