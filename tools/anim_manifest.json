@@ -24,6 +24,12 @@
       "match": ""
     },
     {
+      "slot": "boss3/anim/victory",
+      "note": "Terry VICTORY DANCE — fist pumps, hopping shuffle, belly pat + laugh (post 8aa93d60-6a2a-4d59-9bf4-8dedfe7ca605). Wire: the boss-wins celebration in _game_over (replaces rig_anim.victory_dance() for Terry). Loops/plays once on player loss.",
+      "file": "",
+      "match": ""
+    },
+    {
       "slot": "boss2/anim/hurt",
       "note": "Main boss HURT — comic reel-back, head snap, dizzy wobble; TWO variants on post a7f84641-7dbe-4377-97e8-d7c2d5a8974e. Pick one file. Wire: main-boss crit reaction / 50%-enrage stagger.",
       "file": "",

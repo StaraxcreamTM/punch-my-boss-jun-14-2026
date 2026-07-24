@@ -14,6 +14,7 @@ gated. Expect `Recording`-style / `grok-video-*.mp4` (~5–15MB each).
 | **Terry TAUNT** (belly-laugh, pats belly ×2, 10s) | `36238605-0bd9-4800-8c2e-3ebaf0cffe1f` | Terry (boss3/`big`) taunt / signature during GUARD |
 | **Terry JAB** (big wind-up right jab to camera, 10s) | `3a0d530c-dbc6-48be-bc08-7c1cc6b0aa6e` | Terry attack tell / signature strike |
 | **Terry HURT** (reel-back, belly jiggle, arm windmill, dizzy wobble, 10s) | `306ec948-cb15-4cd0-a52f-c63e837bee2a` | Terry crit reaction / enrage-threshold stagger (`boss3/anim/hurt`) |
+| **Terry VICTORY** (fist pumps, hopping shuffle, belly pat + laugh, 10s) | `8aa93d60-6a2a-4d59-9bf4-8dedfe7ca605` | Boss-wins celebration in `_game_over` (`boss3/anim/victory`) — replaces `victory_dance()` for Terry |
 | **Main boss HURT** (comic reel-back, head snap, dizzy wobble, 10s, **2 variants** on the post) | `a7f84641-7dbe-4377-97e8-d7c2d5a8974e` | Main boss (boss2/`suit`) big-hit reaction or enrage-threshold stagger |
 | **Main boss TAUNT** (finger-wag + laugh, 10s) | `97ad24f4-a6ee-4a6a-bfb8-3ddd261ae7b2` | Main boss (boss2) GUARD-phase signature (`boss2/anim/taunt`) |
 | **Main boss JAB** (wind-up jab to camera, 10s) | `02a71d4f-aae1-4f2d-a49f-8fe8b76ac67d` | Main boss attack tell / signature strike (`boss2/anim/jab`) — supersedes the older `52c33b12` take |
