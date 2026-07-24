@@ -2239,6 +2239,27 @@ func _exit_attract() -> void:
 	close_menu()
 	_show_title()
 
+var _endless_hud: Label
+
+func _ensure_endless_hud() -> void:
+	if _endless_hud != null:
+		return
+	var l := Label.new()
+	l.z_index = 40
+	l.add_theme_font_size_override("font_size", 40)
+	l.add_theme_color_override("font_color", Color(1.0, 0.55, 0.16))
+	l.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.09))
+	l.add_theme_constant_override("outline_size", 10)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.anchor_left = 0.5
+	l.anchor_right = 0.5
+	l.offset_left = -220.0
+	l.offset_right = 220.0
+	l.offset_top = 132.0
+	l.visible = false
+	safe.add_child(l)
+	_endless_hud = l
+
 func _ensure_attract_badge() -> void:
 	if _attract_badge != null:
 		return
@@ -2854,6 +2875,10 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 	boss_line.get_parent().visible = true
 	_screen.visible = false
 	_screen_dim.color = Color(0.05, 0.03, 0.08, 0.82)
+	_ensure_endless_hud()
+	_endless_hud.visible = _endless
+	if _endless:
+		_endless_hud.text = "ROUND %d" % _endless_round
 	var cfg := _level_cfg()
 	# Daily modifier reshapes this fight (boss/player health, sudden death).
 	_daily_oneshot = false
@@ -2950,6 +2975,8 @@ func _show_gameover(won: bool) -> void:
 	if _adaptive_on():
 		adapt_baseline = clampf(lerpf(adapt_baseline, _skill, 0.3), 0.0, 1.0)
 	_check_awards()                            # rank-point awards can trip here
+	if _endless_hud != null:
+		_endless_hud.visible = false
 	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)

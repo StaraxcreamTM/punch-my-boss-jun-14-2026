@@ -563,3 +563,11 @@ difficulty (Bag x1.0, Defensive x1.15, Brawler x1.35) in the central _add_score,
 so picking the harder fight is a real risk/reward trade for the best-score chase.
 The Options difficulty button surfaces it ("DIFFICULTY: BRAWLER (+35% score)").
 Filmstrip-verified the label; parse clean.
+
+## v0.86 — Endless round indicator
+
+Endless showed the round number only in a brief banner at each round start, so
+mid-fight you couldn't tell how deep you were. Added a persistent "ROUND N"
+indicator (top-centre, orange) shown only during Endless fights and hidden on
+gameover / normal fights. Directly captured via the endless path — renders
+clearly; parse clean.
