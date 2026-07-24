@@ -1174,9 +1174,14 @@ func _combo_tier(c: int) -> Array:
 	return ["COMBO", Color(1, 0.82, 0.17), 1.0]
 
 # Award points and pop a floating "+N" at the impact. Big gains read louder.
+# Harder difficulty scores more, so choosing Brawler is a real trade, not just
+# extra pain: he fights back, but every point is worth more.
+const DIFF_SCORE_MUL := [1.0, 1.15, 1.35]   # BAG, DEFENSIVE, BRAWLER
+
 func _add_score(amount: int, at: Vector2) -> void:
 	if amount <= 0:
 		return
+	amount = int(round(float(amount) * DIFF_SCORE_MUL[clampi(difficulty, 0, 2)]))
 	score += amount
 	best_score = maxi(best_score, score)
 	var big := amount >= 300
@@ -4520,7 +4525,12 @@ func _populate_options() -> void:
 	_menu_rows.add_child(hap)
 
 	var names := ["PUNCHING BAG", "DEFENSIVE", "BRAWLER"]
-	var dif := _menu_button("DIFFICULTY:  %s" % names[clampi(difficulty, 0, 2)])
+	var d := clampi(difficulty, 0, 2)
+	var bonus := int(round((DIFF_SCORE_MUL[d] - 1.0) * 100.0))
+	var dtext := "DIFFICULTY:  %s" % names[d]
+	if bonus > 0:
+		dtext += "   (+%d%% score)" % bonus
+	var dif := _menu_button(dtext)
 	dif.pressed.connect(_on_cycle_difficulty)
 	_menu_rows.add_child(dif)
 

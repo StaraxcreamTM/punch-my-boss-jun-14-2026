@@ -555,3 +555,11 @@ by daily/win/endless. Win screen now shows "+N grievance · <rank>"; _check_awar
 runs on gameover so the point-based awards trip. Parse-clean; reuses the proven
 daily-grant path (win-screen capture skipped — the demo didn't KO the test boss
 in-window, but the render path is the existing gameover screen).
+
+## v0.85 — difficulty score multiplier
+
+Brawler and Defensive were harder with no upside. Now score scales with
+difficulty (Bag x1.0, Defensive x1.15, Brawler x1.35) in the central _add_score,
+so picking the harder fight is a real risk/reward trade for the best-score chase.
+The Options difficulty button surfaces it ("DIFFICULTY: BRAWLER (+35% score)").
+Filmstrip-verified the label; parse clean.
