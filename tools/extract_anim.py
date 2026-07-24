@@ -82,7 +82,7 @@ def content_bbox(rgba):
     return xs.min(), ys.min(), xs.max(), ys.max()
 
 
-def motion(prev, cur):
+def motion_diff(prev, cur):
     """Alpha-weighted mean colour difference between two RGBA frames."""
     if prev is None:
         return 1e9
@@ -90,23 +90,16 @@ def motion(prev, cur):
     return float(d)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("video")
-    ap.add_argument("out_dir")
-    ap.add_argument("--fps", type=float, default=12.0)
-    ap.add_argument("--height", type=int, default=700)
-    ap.add_argument("--key", type=int, default=14, help="green-dominance threshold")
-    ap.add_argument("--motion", type=float, default=1.4, help="neutral-trim threshold")
-    args = ap.parse_args()
-
-    cap = cv2.VideoCapture(args.video)
+def extract(video, out_dir, fps=12.0, height=700, key=14, motion=1.4):
+    """Slice one clip -> keyed/trimmed/cropped/downscaled fNNN.png. Returns the
+    frame count written, or 0 on failure. Importable by the batch runner."""
+    cap = cv2.VideoCapture(video)
     if not cap.isOpened():
-        print("cannot open", args.video)
-        return 1
+        print("  cannot open", video)
+        return 0
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-    step = max(1, int(round(src_fps / args.fps)))
-    os.makedirs(args.out_dir, exist_ok=True)
+    step = max(1, int(round(src_fps / fps)))
+    os.makedirs(out_dir, exist_ok=True)
 
     frames = []
     i = 0
@@ -115,17 +108,17 @@ def main():
         if not ok:
             break
         if i % step == 0:
-            frames.append(key_green(f, args.key))
+            frames.append(key_green(f, key))
         i += 1
     cap.release()
     if not frames:
-        print("no frames")
-        return 1
+        print("  no frames decoded")
+        return 0
 
     # Trim neutral padding: keep one still frame at each end as a bookend, drop
     # the rest of the dead run. Motion measured between consecutive kept frames.
-    diffs = [motion(frames[j - 1] if j else None, frames[j]) for j in range(len(frames))]
-    active = [j for j, d in enumerate(diffs) if d >= args.motion]
+    diffs = [motion_diff(frames[j - 1] if j else None, frames[j]) for j in range(len(frames))]
+    active = [j for j, d in enumerate(diffs) if d >= motion]
     if active:
         lo = max(0, active[0] - 1)          # one neutral lead-in frame
         hi = min(len(frames) - 1, active[-1] + 1)
@@ -151,19 +144,32 @@ def main():
         x1 = min(W - 1, x1 + pad); y1 = min(H - 1, y1 + pad)
         frames = [f[y0:y1 + 1, x0:x1 + 1] for f in frames]
 
-    scale = args.height / frames[0].shape[0]
+    scale = height / frames[0].shape[0]
     n = 0
     for f in frames:
         fw = max(1, int(f.shape[1] * scale))
         fh = max(1, int(f.shape[0] * scale))
         small = cv2.resize(f, (fw, fh), interpolation=cv2.INTER_AREA)
         bgra = cv2.cvtColor(small, cv2.COLOR_RGBA2BGRA)
-        cv2.imwrite(os.path.join(args.out_dir, "f%03d.png" % n),
+        cv2.imwrite(os.path.join(out_dir, "f%03d.png" % n),
                     bgra, [cv2.IMWRITE_PNG_COMPRESSION, 9])
         n += 1
-    print("wrote %d frames (from %d sampled, trimmed [%d:%d]) -> %s"
-          % (n, len(diffs), lo, hi, args.out_dir))
-    return 0
+    print("  wrote %d frames (from %d sampled, trimmed [%d:%d]) -> %s"
+          % (n, len(diffs), lo, hi, out_dir))
+    return n
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("video")
+    ap.add_argument("out_dir")
+    ap.add_argument("--fps", type=float, default=12.0)
+    ap.add_argument("--height", type=int, default=700)
+    ap.add_argument("--key", type=int, default=14, help="green-dominance threshold")
+    ap.add_argument("--motion", type=float, default=1.4, help="neutral-trim threshold")
+    args = ap.parse_args()
+    n = extract(args.video, args.out_dir, args.fps, args.height, args.key, args.motion)
+    return 0 if n > 0 else 1
 
 
 if __name__ == "__main__":

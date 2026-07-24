@@ -1,0 +1,27 @@
+{
+  "_doc": "Config for tools/build_anims.py. When a clip's mp4 lands in Downloads, set its 'file' to the exact filename (the runner also accepts a 'match' glob) and run: python tools/build_anims.py. Slots are relative to game/assets. Defaults: fps 12, height 700; drop to fps 8 / height 560 if a slot exceeds ~7MB. After a build, run the Godot editor import pass so the PNGs import.",
+  "downloads": "C:/Users/bryon/Downloads",
+  "game_root": "game/assets",
+  "default_fps": 12,
+  "default_height": 700,
+  "clips": [
+    {
+      "slot": "boss3/anim/taunt",
+      "note": "Terry TAUNT — belly-laugh, pats belly x2 (post 36238605-0bd9-4800-8c2e-3ebaf0cffe1f). Wire: Terry GUARD-phase signature.",
+      "file": "",
+      "match": ""
+    },
+    {
+      "slot": "boss3/anim/jab",
+      "note": "Terry JAB — big wind-up right jab to camera (post 3a0d530c-dbc6-48be-bc08-7c1cc6b0aa6e). Wire: Terry attack tell / signature strike.",
+      "file": "",
+      "match": ""
+    },
+    {
+      "slot": "boss2/anim/hurt",
+      "note": "Main boss HURT — comic reel-back, head snap, dizzy wobble; TWO variants on post a7f84641-7dbe-4377-97e8-d7c2d5a8974e. Pick one file. Wire: main-boss crit reaction / 50%-enrage stagger.",
+      "file": "",
+      "match": ""
+    }
+  ]
+}

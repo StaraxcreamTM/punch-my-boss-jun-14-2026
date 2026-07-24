@@ -486,3 +486,15 @@ Upgraded the master-volume control from a 5-step cycle button to a proper
 draggable HSlider (label + track + live %). Applies live while dragging, saves
 on drag-end (not every frame). Filmstrip-verified in Options. Completes the
 thin-polish set (Reset Progress + Smart Boss toggle shipped in v0.73).
+
+## v0.78 — config-driven batch clip slicer
+
+Turned the per-clip extractor into a batch pipeline so the video art wave lands
+fast. extract_anim.py now exposes an importable extract(); tools/build_anims.py
+reads tools/anim_manifest.json (slot + source file/glob + per-clip fps/height)
+and slices every resolvable clip into game/assets/<slot>/ in one run - idempotent
+(skips built slots unless --force), reports built/skipped/waiting, and reminds to
+run the Godot import pass. Manifest pre-filled with the round-1 slots (Terry
+taunt/jab -> boss3, main-boss hurt -> boss2) and their wiring notes; each 'file'
+gets set when its mp4 lands. Verified: dry run lists all three waiting; a proof
+run sliced the validated boss clip end-to-end (self-test artifacts removed).
