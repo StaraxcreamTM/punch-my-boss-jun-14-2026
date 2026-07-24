@@ -18,6 +18,12 @@
       "match": ""
     },
     {
+      "slot": "boss3/anim/hurt",
+      "note": "Terry HURT — comic reel-back, belly jiggle, arm windmill, dizzy wobble (post 306ec948-cb15-4cd0-a52f-c63e837bee2a). Wire: Terry crit reaction / 50%-enrage stagger.",
+      "file": "",
+      "match": ""
+    },
+    {
       "slot": "boss2/anim/hurt",
       "note": "Main boss HURT — comic reel-back, head snap, dizzy wobble; TWO variants on post a7f84641-7dbe-4377-97e8-d7c2d5a8974e. Pick one file. Wire: main-boss crit reaction / 50%-enrage stagger.",
       "file": "",
