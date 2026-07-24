@@ -22,6 +22,18 @@
       "note": "Main boss HURT — comic reel-back, head snap, dizzy wobble; TWO variants on post a7f84641-7dbe-4377-97e8-d7c2d5a8974e. Pick one file. Wire: main-boss crit reaction / 50%-enrage stagger.",
       "file": "",
       "match": ""
+    },
+    {
+      "slot": "boss2/anim/taunt",
+      "note": "Main boss TAUNT — finger-wag + laugh (post 97ad24f4-a6ee-4a6a-bfb8-3ddd261ae7b2). Wire: main-boss GUARD-phase signature (replaces the finger_wag sig on 'suit').",
+      "file": "",
+      "match": ""
+    },
+    {
+      "slot": "boss2/anim/jab",
+      "note": "Main boss JAB — wind-up jab toward camera (post 02a71d4f-aae1-4f2d-a49f-8fe8b76ac67d). Wire: main-boss attack tell / signature strike. NB: the older grok-video-52c33b12 clip is an earlier take of this same move — prefer this one.",
+      "file": "",
+      "match": ""
     }
   ]
 }
