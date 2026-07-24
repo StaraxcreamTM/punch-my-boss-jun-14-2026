@@ -4353,10 +4353,7 @@ func _populate_options() -> void:
 	mus.pressed.connect(_on_toggle_music)
 	_menu_rows.add_child(mus)
 
-	var vol := _menu_button("VOLUME:  %d%%" % int(round(master_vol * 100.0)),
-		Color(0.20, 0.55, 0.62) if master_vol > 0.0 else Color(0.35, 0.33, 0.42))
-	vol.pressed.connect(_on_cycle_volume)
-	_menu_rows.add_child(vol)
+	_menu_rows.add_child(_make_volume_row())
 
 	var hap := _menu_button("VIBRATION:  %s" % ("ON" if haptics_on else "OFF"),
 		Color(0.20, 0.70, 0.25) if haptics_on else Color(0.35, 0.33, 0.42))
@@ -4394,21 +4391,47 @@ func _on_toggle_haptics() -> void:
 	_save_prefs()
 	open_menu(Phase.OPTIONS)
 
-const VOLUME_STEPS := [1.0, 0.75, 0.5, 0.25, 0.0]
+var _vol_pct: Label
 
-func _on_cycle_volume() -> void:
-	# Step to the next preset, snapping to the nearest current value first.
-	var best := 0
-	var bd := 9.0
-	for i in range(VOLUME_STEPS.size()):
-		var d: float = absf(float(VOLUME_STEPS[i]) - master_vol)
-		if d < bd:
-			bd = d
-			best = i
-	master_vol = float(VOLUME_STEPS[(best + 1) % VOLUME_STEPS.size()])
+# A real draggable volume slider (label + HSlider + live %). Applies live while
+# dragging; persists on drag-end so we don't hammer the save file every frame.
+func _make_volume_row() -> Control:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(0, MENU_ROW_H)
+	row.add_theme_constant_override("separation", 24)
+	var lbl := Label.new()
+	lbl.text = "VOLUME"
+	lbl.add_theme_font_size_override("font_size", 40)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.custom_minimum_size = Vector2(300, MENU_ROW_H)
+	row.add_child(lbl)
+	var sld := HSlider.new()
+	sld.min_value = 0.0
+	sld.max_value = 1.0
+	sld.step = 0.05
+	sld.value = master_vol
+	sld.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sld.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sld.custom_minimum_size = Vector2(560, 60)
+	sld.value_changed.connect(_on_volume_slide)
+	sld.drag_ended.connect(func(_c: bool) -> void: _save_prefs())
+	row.add_child(sld)
+	_vol_pct = Label.new()
+	_vol_pct.text = "%d%%" % int(round(master_vol * 100.0))
+	_vol_pct.add_theme_font_size_override("font_size", 40)
+	_vol_pct.add_theme_color_override("font_color", Color(1.0, 0.86, 0.4))
+	_vol_pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_vol_pct.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_vol_pct.custom_minimum_size = Vector2(160, MENU_ROW_H)
+	row.add_child(_vol_pct)
+	return row
+
+func _on_volume_slide(v: float) -> void:
+	master_vol = clampf(v, 0.0, 1.0)
 	_apply_volume()
-	_save_prefs()
-	open_menu(Phase.OPTIONS)
+	if _vol_pct != null and is_instance_valid(_vol_pct):
+		_vol_pct.text = "%d%%" % int(round(master_vol * 100.0))
 
 func _on_toggle_adaptive() -> void:
 	adaptive_enabled = not adaptive_enabled

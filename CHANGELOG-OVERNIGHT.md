@@ -479,3 +479,10 @@ ART-INBOX-PENDING.md so it survives context. Also flagged an older Jul-21
 grok-video batch already on disk: one usable boss clip, some green-screen women
 clips awaiting the user's word, and several photorealistic personal videos left
 untouched (not game assets).
+
+## v0.77 — volume as a real slider
+
+Upgraded the master-volume control from a 5-step cycle button to a proper
+draggable HSlider (label + track + live %). Applies live while dragging, saves
+on drag-end (not every frame). Filmstrip-verified in Options. Completes the
+thin-polish set (Reset Progress + Smart Boss toggle shipped in v0.73).
