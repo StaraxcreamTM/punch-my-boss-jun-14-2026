@@ -48,6 +48,30 @@ Present in Downloads but unaddressed; flagged, untouched:
   integrate, or view. Left entirely untouched.**
 
 ## Still-image backlog (from earlier)
-Correct Bev/Nina/Marcus/Sandra/Terry expression sets, 11 backgrounds, 6 themed
-boss bases. Harvest neutrals from each base body (the Terry method). See
-`ART-INBOX-IGNORE.txt` for the Jul-22 duplicate set to skip.
+Correct Bev/Nina/Marcus/Sandra/Terry expression sets, **11 themed level
+backgrounds** (nurses' station, police station, construction, fast food, gas
+station, library, lawyer office, hospital, school, college, university — for
+levels 10–20), 6 themed boss bases. Harvest neutrals from each base body (the
+Terry method). See `ART-INBOX-IGNORE.txt` for the Jul-22 duplicate set to skip.
+
+## Arena backgrounds — "common boss places" (manifest 2026-07-24)
+Five more flat-cartoon, people-free backgrounds, download-clicked (still gated).
+These become **Free Fight arenas** (and can back future levels). **16 arena
+backgrounds pending total** (11 themed above + these 5).
+
+| Arena | Details | Notes |
+|---|---|---|
+| **Boardroom** | SYNERGY whiteboard, declining sales chart | ⚠ **generated as a 10s VIDEO** — pull one clean frame for the bg (see `tools/extract_bg.py`), not a sequence |
+| **Break room** | vending machine, passive-aggressive fridge notes, fallen birthday banner | still image |
+| **Corner office** | "THE BOSS" nameplate, ego wall, sad visitor chair | still image |
+| **Warehouse** | racks, forklift, SAFETY FIRST banner | still image |
+| **Restaurant kitchen** | flaming stove, crooked health certificate | still image |
+
+**Integration when they land** (bg PNGs into `game/assets/scenes/` or `bg/`):
+- The Free Fight arena grid currently lists the 20 levels; add these as
+  **bg-only arenas** — a small `ARENAS` registry `[{name, bg, gimmick}]` the
+  picker appends after the levels (I'll wire it once the files exist so I can
+  filmstrip-verify the real art, rather than scaffolding blind).
+- The office bg is the fallback until each lands, so nothing breaks meanwhile.
+- Boardroom video → `tools/extract_bg.py <video> <out.png>` grabs a mid clip
+  frame at full res (no green-key — backgrounds are full scenes).
