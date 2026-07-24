@@ -58,6 +58,12 @@
       "note": "Marcus TAUNT — finger-wag, smug laugh, eyebrow raised (post 40398afc-069b-4db9-ad4b-b8d176c3a82d). Marcus = 'man' char. Wire: Marcus GUARD-phase signature (replaces the 'shrug' sig on 'man').",
       "file": "",
       "match": ""
+    },
+    {
+      "slot": "boss6/anim/hurt",
+      "note": "Bev HURT — reel-back, hair whip, arm windmill, dizzy wobble (post 4b51513f-78f1-4dce-9c5b-2c11ba07c584). Bev = 'suit_w' char. Wire: Bev crit reaction / enrage-threshold stagger.",
+      "file": "",
+      "match": ""
     }
   ]
 }

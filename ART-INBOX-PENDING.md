@@ -20,6 +20,7 @@ gated. Expect `Recording`-style / `grok-video-*.mp4` (~5–15MB each).
 | **Main boss JAB** (wind-up jab to camera, 10s) | `02a71d4f-aae1-4f2d-a49f-8fe8b76ac67d` | Main boss attack tell / signature strike (`boss2/anim/jab`) — supersedes the older `52c33b12` take |
 | **Sandra HURT** (reel-back, hair whip, dizzy wobble, 10s) | `3c9d1100-fda4-4be7-9e3f-9f9297c1375c` | Sandra (boss5/`swim`) crit reaction / enrage stagger (`boss5/anim/hurt`) |
 | **Marcus TAUNT** (finger-wag, smug laugh, eyebrow raised, 10s) | `40398afc-069b-4db9-ad4b-b8d176c3a82d` | Marcus (boss4/`man`) GUARD-phase signature (`boss4/anim/taunt`) |
+| **Bev HURT** (reel-back, hair whip, arm windmill, dizzy wobble, 10s) | `4b51513f-78f1-4dce-9c5b-2c11ba07c584` | Bev (boss6/`suit_w`) crit reaction / enrage stagger (`boss6/anim/hurt`) |
 | ~~junk~~ | `1b7b12d1-6cfa-4805-8d7d-f8cbfef00885` | **IGNORE** — wrong reference (desktop screenshot) |
 
 ### How to integrate (proven pipeline)
