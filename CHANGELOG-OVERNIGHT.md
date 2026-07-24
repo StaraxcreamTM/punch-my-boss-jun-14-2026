@@ -536,3 +536,9 @@ Material (1,000 / 2,400 grievance points), Objection! (land a parry), Adrenaline
 Junkie (super punch), Their Worst Day (500 damage in one fight). Stat-based ones
 join _check_awards; parry/super grant at their event sites. Awards screen still
 fits the 2-column grid (verified at 18). Menu counter updates automatically.
+
+## v0.83 — enrich the setpiece intros (bridge / car / moon)
+
+The three gimmick-level intros (The Offsite/bridge, Company Car, Moonshot) had
+only 4 lines each — the thinnest in the game. Added 3 in-theme lines to each
+(9 total) so the memorable setpiece fights don't repeat their banter as fast.

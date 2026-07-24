@@ -74,18 +74,27 @@ const PREFIGHT := {
 		"Team offsite! I picked the venue. It's a bridge. Don't ask.",
 		"You wouldn't push your own manager. That'd be insubordinate.",
 		"This railing is decorative, apparently. Legal is looking into it.",
+		"Trust falls build teams. This is NOT a trust fall.",
+		"One more step and I'm putting you on a performance bridge. Plan. PLAN.",
+		"I chose the scenic option. I did not choose the plummet option.",
 	],
 	8: [
 		"I got the company car. You got the company newsletter.",
 		"Don't scratch it. It's leased. Against your bonus, actually.",
 		"Nought to sixty in six seconds. Your career: slower.",
 		"I'd offer you a lift, but you haven't earned the passenger seat.",
+		"Mind the alloys. Those alloys cost more than your team.",
+		"I expensed this as 'travel'. Do NOT make it 'incident'.",
+		"Heated seats. Cold heart. That's the executive package.",
 	],
 	9: [
 		"They said reach for the stars. I meant it as a metaphor. STOP—",
 		"There's no oxygen up there. Or performance reviews. Hmm.",
 		"You can't fire me into space. There's a policy. There's a POLICY—",
 		"Moonshot thinking! That's all I ever asked for! Not like this!",
+		"Low gravity, HIGH stakes, and my feet leaving the ground—",
+		"I said 'blue sky thinking'! This is TOO literal!",
+		"One giant leap for you, one very concerning trajectory for me—",
 	],
 	# --- themed bosses (10-20): profession-specific trash talk ---------------
 	10: [   # Nurse Payne
