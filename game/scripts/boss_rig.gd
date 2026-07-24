@@ -768,6 +768,42 @@ func parts_launch(power: float = 1.0) -> void:
 	pose({"spine": 0.2 * power, "chest": 0.16 * power}, 0.08, 0.12, 0.28)
 
 
+# Corkscrew: the whole body twists up and drills round like a wrung-out towel,
+# then unwinds and settles. A punchy full-body spin reaction.
+func corkscrew(power: float = 1.0) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_pos", Vector2(0.0, -70.0 * power), 0.10) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "body_pos", Vector2.ZERO, 0.42) \
+		.set_trans(Tween.TRANS_BOUNCE)
+	var tr := create_tween()
+	tr.tween_property(self, "body_rot", 0.5 * power, 0.10) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tr.tween_property(self, "body_rot", -0.18 * power, 0.16).set_trans(Tween.TRANS_SINE)
+	tr.tween_property(self, "body_rot", 0.0, 0.30).set_trans(Tween.TRANS_ELASTIC)
+	pose({"spine": 0.3 * power, "chest": -0.2 * power, "head": 0.4 * power,
+		"uarmL": 0.6 * power, "uarmR": -0.6 * power}, 0.10, 0.10, 0.40)
+
+
+# Pancake bounce: squashed flat to the desk in one frame, holds a beat, then
+# pops back up past normal and jiggles out - a splat-and-rebound accent.
+# body_scale is a DELTA from the base scale (matches squash()).
+func pancake_bounce(power: float = 1.0) -> void:
+	var tw := create_tween()
+	tw.tween_property(self, "body_scale", Vector2(0.5 * power, -0.42 * power), 0.04) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.12)
+	tw.tween_property(self, "body_scale", Vector2(-0.16 * power, 0.22 * power), 0.14) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "body_scale", Vector2.ZERO, 0.40).set_trans(Tween.TRANS_ELASTIC)
+	var tp := create_tween()
+	tp.tween_property(self, "body_pos", Vector2(0.0, 60.0 * power), 0.06)
+	tp.tween_interval(0.12)
+	tp.tween_property(self, "body_pos", Vector2(0.0, -30.0 * power), 0.14) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tp.tween_property(self, "body_pos", Vector2.ZERO, 0.38).set_trans(Tween.TRANS_ELASTIC)
+
+
 # --- victory + signature moves ---------------------------------------------
 
 # Celebration when the player loses: bouncy hops, arms pumping overhead, gloating.

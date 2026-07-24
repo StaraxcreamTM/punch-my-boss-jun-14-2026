@@ -517,3 +517,13 @@ app title (+ ASO alternates), short description, a full description within the
 flagging the calls that are the user's (title, pricing line, content rating,
 screenshots, trailer - a capture of the new attract mode is a ready reel).
 Deliberately makes no price/ads claim so it fits either monetisation model.
+
+## v0.81 — more dialogue + reaction variety
+
+Comedy/personality pass. Added ~44 new boss lines to the high-frequency banks
+(COMBO +12, LOWHP +10, PLAYER_DOWN +8, MISS +7, KO +7), all in the corporate-
+manager-getting-punched voice. Two new cartoon hit reactions in the rig:
+corkscrew (body twists up and drills round, then unwinds - added to the head-
+crit gag roll, now 10) and pancake_bounce (splat-flat then pop-and-jiggle -
+added to the body-crit roll, now 7). Both reuse the proven body_scale/body_pos/
+pose primitives; parse clean and a full fight ran error-free.

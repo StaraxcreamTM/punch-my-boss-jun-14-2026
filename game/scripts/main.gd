@@ -1021,8 +1021,8 @@ func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
 	rig_anim.squash(1.0 if crit else 0.55)
 	if is_head:
 		if crit:
-			# Big head hits roll one of the cartoon head gags (now 9).
-			match randi() % 9:
+			# Big head hits roll one of the cartoon head gags (now 10).
+			match randi() % 10:
 				0:
 					rig_anim.head_spin(randi_range(2, 4))
 				1:
@@ -1039,6 +1039,8 @@ func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
 					rig_anim.orbit_head(randi_range(2, 3))
 				7:
 					rig_anim.backwards_bend(1.0)
+				8:
+					rig_anim.corkscrew(1.0)
 				_:
 					rig_anim.parts_launch(1.0)
 		else:
@@ -1049,8 +1051,8 @@ func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
 	else:
 		rig_anim.stagger(side_left, 1.0 if crit else 0.55)
 		if crit:
-			# Body criticals roll one of the body gags (now 6).
-			match randi() % 6:
+			# Body criticals roll one of the body gags (now 7).
+			match randi() % 7:
 				0:
 					rig_anim.flatten(1.0)
 				1:
@@ -1061,6 +1063,8 @@ func _react_hit(is_head: bool, side_left: bool, crit: bool) -> void:
 					rig_anim.accordion(1.0)
 				4:
 					rig_anim.knee_knock(1.0)
+				5:
+					rig_anim.pancake_bounce(1.0)
 				_:
 					rig_anim.knees_buckle(0.9)
 

@@ -311,6 +311,13 @@ const MISS := [
 	"That's the kind of accuracy that gets you a mug.",
 	"Nearly! Nearly is the story of your file.",
 	"Do you want me to stand still? I could stand still.",
+	"Missed! Put it in the parking lot with your career!",
+	"So close! Like your deadlines! Which is to say: no.",
+	"That's a swing and a 'we'll circle back'.",
+	"Whiff! I've seen better follow-through from Legal.",
+	"Air! Delicious, boss-shaped air!",
+	"Try dragging it into 'Done'. Oh, you can't. It's not done.",
+	"That the best you've got? HR would love to hear more.",
 ]
 
 # --- low HP: the mask slips ---------------------------------------------------
@@ -335,6 +342,16 @@ const LOWHP := [
 	"Unlimited PTO! Actually unlimited! Actually take it!",
 	"I take it back! All of it! Even the stuff from 2018!",
 	"HELP. Somebody. Anybody. Karen from Accounts?",
+	"Let's park this! Let's park it in a HOSPITAL!",
+	"I'll expense the ambulance! I'll expense YOU!",
+	"Bonus! There's a bonus! I'm inventing it NOW!",
+	"We're a family! A dysfunctional, punchy family!",
+	"I'll delete the org chart! You can be the org chart!",
+	"Sabbatical! Take a sabbatical! Starting immediately!",
+	"I never sent that email at 11pm! That was a robot!",
+	"Your title? Whatever you want! Chief of Whatever!",
+	"I'll do the all-hands! I'll BE the all-hands!",
+	"Let's align! On me not being hit! Let's align on THAT!",
 ]
 
 # --- boss goes down -----------------------------------------------------------
@@ -361,6 +378,13 @@ const KO := [
 	"Deprioritising... standing...",
 	"You've unblocked yourself... congratulations...",
 	"I'm taking that PTO after all...",
+	"Actioning... the floor...",
+	"Let's take this... offline... permanently...",
+	"Adding you... to the... will... I mean... team...",
+	"Great synergy... between my face... and your fist...",
+	"I'll loop myself out... of consciousness...",
+	"Retro on this later... blameless... mostly...",
+	"You're a... rockstar... a ninja... an owww...",
 ]
 
 # --- player goes down ---------------------------------------------------------
@@ -380,6 +404,14 @@ const PLAYER_DOWN := [
 	"I'll walk you back to your desk. Slowly. Publicly.",
 	"That's what happens when you skip the offsite.",
 	"Good effort! Bad outcome! Classic!",
+	"Circle back never. Circle back to your DESK.",
+	"I admire the hustle. From up here. On my feet.",
+	"That's going in the deck. Slide 40. 'Learnings'.",
+	"Escalated and de-escalated. By me. Just now.",
+	"You'll get 'em next sprint. You won't. But say it.",
+	"I'd give you feedback but I'm too busy winning.",
+	"Resilience! Show it! At your desk! Quietly!",
+	"That's a growth opportunity. For me. I grew.",
 ]
 
 # --- gimmick-specific ---------------------------------------------------------
@@ -435,6 +467,18 @@ const COMBO_LINES := [
 	"Great throughput! Terrible context!",
 	"This is the initiative I asked for and I hate it!",
 	"Consistent delivery! I'm horrified and impressed!",
+	"That's a combo! Put it on your LinkedIn!",
+	"You're scaling! Please don't scale!",
+	"Circle back — to NOT doing that!",
+	"This is going in the retro! The BAD column!",
+	"You've unblocked yourself! On my FACE!",
+	"Synergy! That's what this is! Awful synergy!",
+	"You've been quietly quitting into a LOUD activity!",
+	"Momentum! I hate momentum!",
+	"Take it offline! Take ALL of it offline!",
+	"You're crushing it! The 'it' is me!",
+	"Deliverable after deliverable! Deliver a BREAK!",
+	"KPI stands for Keep Punching, Inevitably?!",
 ]
 
 # --- between levels -----------------------------------------------------------
