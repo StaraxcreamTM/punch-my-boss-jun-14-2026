@@ -508,3 +508,12 @@ straight back to a clean title (and restores the player's real difficulty, which
 the demo temporarily forces to Brawler). Idle only accrues on the title and never
 while the how-to card is up. Added a --attract shot-harness flag to capture it;
 filmstrip-verified the loop plays with a single boss and the badge visible.
+
+## v0.80 — Google Play store listing draft
+
+Drafted STORE-LISTING.md from MAKE-IT-SELLABLE and the shipped feature set:
+app title (+ ASO alternates), short description, a full description within the
+4000-char limit, promo feature bullets, and a "decisions to make" section
+flagging the calls that are the user's (title, pricing line, content rating,
+screenshots, trailer - a capture of the new attract mode is a ready reel).
+Deliberately makes no price/ads claim so it fits either monetisation model.
