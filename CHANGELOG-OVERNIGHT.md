@@ -571,3 +571,22 @@ mid-fight you couldn't tell how deep you were. Added a persistent "ROUND N"
 indicator (top-centre, orange) shown only during Endless fights and hidden on
 gameover / normal fights. Directly captured via the endless path — renders
 clearly; parse clean.
+
+## v0.87 — FREE FIGHT / custom match mode
+
+New user request: pick any opponent and any arena, then fight that combo. Added a
+FREE FIGHT main-menu entry (9th button — reduced menu row height 92->82 and
+separation to fit) opening a touch-friendly picker: an 8-character OPPONENT grid
+(every rigged boss) and a 20-arena grid (all levels), each a selectable name card
+(thumbnails to follow when art lands), plus an "ARENA GIMMICK: ON/OFF" toggle and
+a dynamic "FIGHT! <char> in <arena>" button. Selection persists under [free].
+
+Implementation: the chosen arena sets `level` (so its bg/stats/gimmick/mood/
+dialogue apply); a `_free_fight` flag makes _apply_opponent use the chosen
+character and opponent_name() its name; `_gimmick()` honours the toggle;
+_start_prefight gained a free_fight param and every other entry point clears the
+flag. Filmstrip-verified: 9-button menu fits, both picker grids render, and a
+driven custom fight (Big Terry in the Construction arena) shows the chosen
+character with the chosen level's rules. NB: themed arenas still render the
+office bg until the background art wave lands — that's the existing art gate, not
+a free-fight bug; arenas 1-9 and all gimmicks/stats already differ.

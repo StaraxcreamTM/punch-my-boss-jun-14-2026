@@ -97,7 +97,26 @@ const COMBO_WINDOW := 0.95
 const ROUND_HP_SCALE := 1.4
 
 # --- screens / phases ------------------------------------------------------
-enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, AWARDS, STATS, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+enum Phase { TITLE, MENU, LEVELS, CUSTOMIZE, OPTIONS, AWARDS, STATS, FREEFIGHT, PREFIGHT, FIGHT, GAMEOVER, VICTORY }
+
+# --- free fight / custom match ---
+# The player picks any rigged opponent and any arena, then fights that combo with
+# the normal rules. The chosen arena supplies the background/stats/gimmick; the
+# chosen character overrides whoever that level would normally field.
+const FREE_CHARS := [
+	["suit", "Your Boss"],
+	["big", "Big Terry"],
+	["man", "Marcus"],
+	["swim", "Sandra"],
+	["suit_w", "Bev"],
+	["suit_w2", "Yolanda"],
+	["tank_w", "Nina"],
+	["tank_w2", "Keisha"],
+]
+var _free_fight: bool = false
+var free_char: String = "suit"      # persisted last selection
+var free_arena: int = 1             # persisted last arena (level number)
+var free_use_gimmick: bool = true   # include the arena's gimmick
 var phase: int = Phase.TITLE
 var _screen: Control
 var _screen_dim: ColorRect
@@ -380,6 +399,18 @@ const ROSTER := {
 # own saved look - those are the fights against YOUR boss.
 func _apply_opponent() -> void:
 	var r: Dictionary = ROSTER.get(level, {})
+	# Free fight overrides the character with the player's pick, keeping the
+	# arena's stats/gimmick from `level`.
+	if _free_fight:
+		if free_char != character and _outline_mat != null:
+			set_character(free_char, _outline_mat)
+		if not has_expressions():
+			return
+		look_skin = 0
+		look_hair = 0
+		look_moustache = 0
+		_apply_look_no_save()
+		return
 	# Swap the whole figure if this opponent is a different character.
 	var want := String(r.get("char", "suit"))
 	if want != character and _outline_mat != null:
@@ -397,8 +428,16 @@ func _apply_opponent() -> void:
 	_apply_look_no_save()
 
 func opponent_name() -> String:
+	if _free_fight:
+		return _free_char_name(free_char)
 	var r: Dictionary = ROSTER.get(level, {})
 	return String(r.get("who", "Your Boss"))
+
+func _free_char_name(key: String) -> String:
+	for c in FREE_CHARS:
+		if String(c[0]) == key:
+			return String(c[1])
+	return "Your Boss"
 
 func _attack_set() -> Array:
 	return LEVEL_ATTACKS.get(level, [0, 1, 2])
@@ -2122,9 +2161,11 @@ func _demo_tour() -> void:
 					open_menu(Phase.STATS)
 				5:
 					open_menu(Phase.OPTIONS)
+				6:
+					open_menu(Phase.FREEFIGHT)
 				_:
 					_on_play()
-		Phase.LEVELS, Phase.OPTIONS, Phase.AWARDS, Phase.STATS:
+		Phase.LEVELS, Phase.OPTIONS, Phase.AWARDS, Phase.STATS, Phase.FREEFIGHT:
 			open_menu(Phase.MENU)
 		Phase.CUSTOMIZE:
 			# Exercise the cycle buttons before moving on.
@@ -2451,7 +2492,7 @@ func _go_back() -> void:
 	match phase:
 		Phase.FIGHT:
 			_on_pause()
-		Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS, Phase.AWARDS, Phase.STATS, Phase.PREFIGHT:
+		Phase.LEVELS, Phase.CUSTOMIZE, Phase.OPTIONS, Phase.AWARDS, Phase.STATS, Phase.FREEFIGHT, Phase.PREFIGHT:
 			open_menu(Phase.MENU)
 		Phase.VICTORY, Phase.GAMEOVER:
 			_advance_screen()
@@ -2677,6 +2718,9 @@ func _load_prefs() -> void:
 	seen_howto = bool(cfg.get_value("settings", "seen_howto", false))
 	adaptive_enabled = bool(cfg.get_value("settings", "adaptive", true))
 	master_vol = clampf(float(cfg.get_value("settings", "volume", 1.0)), 0.0, 1.0)
+	free_char = str(cfg.get_value("free", "char", "suit"))
+	free_arena = clampi(int(cfg.get_value("free", "arena", 1)), 1, LEVELS.size())
+	free_use_gimmick = bool(cfg.get_value("free", "gimmick", true))
 	music_on = bool(cfg.get_value("settings", "music", true))
 	difficulty = int(cfg.get_value("settings", "difficulty", Difficulty.BRAWLER))
 	look_skin = int(cfg.get_value("look", "skin", 0))
@@ -2707,6 +2751,9 @@ func _save_prefs() -> void:
 	cfg.set_value("settings", "haptics", haptics_on)
 	cfg.set_value("settings", "seen_howto", seen_howto)
 	cfg.set_value("settings", "adaptive", adaptive_enabled)
+	cfg.set_value("free", "char", free_char)
+	cfg.set_value("free", "arena", free_arena)
+	cfg.set_value("free", "gimmick", free_use_gimmick)
 	cfg.set_value("settings", "volume", master_vol)
 	cfg.set_value("settings", "music", music_on)
 	cfg.set_value("settings", "difficulty", difficulty)
@@ -2838,9 +2885,10 @@ func _difficulty_name() -> String:
 			return "3  BRAWLER   (he hits back - dodge!)"
 
 # The pre-fight beat: he gets a line in before the bell.
-func _start_prefight() -> void:
+func _start_prefight(free_fight: bool = false) -> void:
 	# Starting a normal fight from the menu leaves Endless and clears its scaling.
 	_endless = false
+	_free_fight = free_fight
 	_hp_mul = 1.0
 	_dmg_mul = 1.0
 	close_menu()
@@ -3147,6 +3195,9 @@ const THROW_GRAV := 2600.0
 const THROW_DAMP := 0.62
 
 func _gimmick() -> String:
+	# Free fight can force a plain boxing match regardless of the arena's gimmick.
+	if _free_fight and not free_use_gimmick:
+		return "punch"
 	return String(_level_cfg().get("gimmick", "punch"))
 
 func _gimmick_uses_rig_body() -> bool:
@@ -4182,7 +4233,7 @@ func play_entrance() -> void:
 # Touch-first: every row is a full-width button with a large tap target, since
 # Android is the target and thumbs are imprecise. The title screen is the front
 # door; everything else hangs off the main menu.
-const MENU_ROW_H := 92.0
+const MENU_ROW_H := 82.0
 const MENU_W := 1120.0
 # Customise two-column layout: left options column width, and how far the boss
 # preview shifts right (into the clear half) so the option rows never cover him.
@@ -4286,7 +4337,7 @@ func open_menu(kind: int) -> void:
 	pop.tween_property(_menu, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	pop.parallel().tween_property(_menu, "modulate:a", 1.0, 0.16)
 	_clear_rows()
-	_menu_rows.add_theme_constant_override("separation", 16)
+	_menu_rows.add_theme_constant_override("separation", 12)
 	_menu_rows.offset_top = 215.0
 	# Customise is a two-column layout: options on the LEFT, the live character
 	# preview on the RIGHT. Every other screen centres its rows over the (dimmed)
@@ -4326,6 +4377,8 @@ func open_menu(kind: int) -> void:
 			_populate_awards()
 		Phase.STATS:
 			_populate_stats()
+		Phase.FREEFIGHT:
+			_populate_freefight()
 
 func close_menu() -> void:
 	_menu.visible = false
@@ -4350,6 +4403,9 @@ func _populate_main() -> void:
 	var en := _menu_button(en_label, Color(0.86, 0.42, 0.16))
 	en.pressed.connect(_start_endless)
 	_menu_rows.add_child(en)
+	var ff := _menu_button("FREE FIGHT", Color(0.24, 0.60, 0.55))
+	ff.pressed.connect(func() -> void: open_menu(Phase.FREEFIGHT))
+	_menu_rows.add_child(ff)
 	# Daily grievance: one challenge a day. Shows "done" once claimed.
 	if _daily_done_today():
 		var dg := _menu_button("DAILY GRIEVANCE  -  DONE  (streak %d)" % daily_streak,
@@ -4380,6 +4436,73 @@ func _populate_main() -> void:
 func _on_play() -> void:
 	close_menu()
 	_start_prefight()
+
+# --- free fight picker ------------------------------------------------------
+func _ff_label(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 30)
+	l.add_theme_color_override("font_color", Color(0.82, 0.85, 0.95))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.custom_minimum_size = Vector2(0, 44)
+	return l
+
+# A compact, selectable grid cell (selected = green, else the given colour).
+func _ff_cell(text: String, selected: bool, w: float, base: Color) -> Button:
+	var b := _menu_button(text, Color(0.20, 0.70, 0.25) if selected else base)
+	b.add_theme_font_size_override("font_size", 22)
+	b.custom_minimum_size = Vector2(w, 54)
+	b.clip_text = true
+	return b
+
+func _populate_freefight() -> void:
+	_menu_title.text = "FREE FIGHT"
+	_menu_rows.offset_top = 170.0
+	_menu_rows.add_child(_ff_label("OPPONENT"))
+	var cgrid := GridContainer.new()
+	cgrid.columns = 4
+	cgrid.add_theme_constant_override("h_separation", 14)
+	cgrid.add_theme_constant_override("v_separation", 8)
+	_menu_rows.add_child(cgrid)
+	for entry in FREE_CHARS:
+		var key := String(entry[0])
+		var cell := _ff_cell(String(entry[1]), key == free_char, 250.0, Color(0.24, 0.34, 0.52))
+		cell.pressed.connect(func() -> void:
+			free_char = key
+			open_menu(Phase.FREEFIGHT))
+		cgrid.add_child(cell)
+	_menu_rows.add_child(_ff_label("ARENA"))
+	var agrid := GridContainer.new()
+	agrid.columns = 5
+	agrid.add_theme_constant_override("h_separation", 12)
+	agrid.add_theme_constant_override("v_separation", 8)
+	_menu_rows.add_child(agrid)
+	for i in range(LEVELS.size()):
+		var n := i + 1
+		var nm := "%d. %s" % [n, String((LEVELS[i] as Dictionary).get("name", ""))]
+		var cell := _ff_cell(nm, n == free_arena, 205.0, Color(0.30, 0.28, 0.40))
+		cell.pressed.connect(func() -> void:
+			free_arena = n
+			open_menu(Phase.FREEFIGHT))
+		agrid.add_child(cell)
+	var gim := _menu_button("ARENA GIMMICK:  %s" % ("ON" if free_use_gimmick else "OFF"),
+		Color(0.20, 0.70, 0.25) if free_use_gimmick else Color(0.35, 0.33, 0.42))
+	gim.add_theme_font_size_override("font_size", 30)
+	gim.custom_minimum_size = Vector2(0, 66)
+	gim.pressed.connect(func() -> void:
+		free_use_gimmick = not free_use_gimmick
+		open_menu(Phase.FREEFIGHT))
+	_menu_rows.add_child(gim)
+	var go := _menu_button("FIGHT!  %s  in  %s" % [_free_char_name(free_char),
+		String((LEVELS[free_arena - 1] as Dictionary).get("name", ""))], Color(0.82, 0.2, 0.18))
+	go.add_theme_font_size_override("font_size", 34)
+	go.pressed.connect(_start_free_fight)
+	_menu_rows.add_child(go)
+
+func _start_free_fight() -> void:
+	level = clampi(free_arena, 1, LEVELS.size())
+	_save_prefs()
+	_start_prefight(true)
 
 func _populate_levels() -> void:
 	_menu_title.text = "LEVEL SELECT"
@@ -5350,6 +5473,7 @@ func _rand_endless_level() -> int:
 
 func _start_endless() -> void:
 	_endless = true
+	_free_fight = false
 	_endless_round = 1
 	_hp_mul = 1.0
 	_dmg_mul = 1.0
