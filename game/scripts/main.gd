@@ -2921,6 +2921,7 @@ func _show_gameover(won: bool) -> void:
 	# Endless can only end on a loss (a win rolls into the next round), so an
 	# Endless gameover reports how far the survival run got.
 	var was_endless := _endless
+	var was_daily := _daily_active
 	var rounds := _endless_round
 	if won:
 		_complete_daily(_hits_this_fight == 0)
@@ -2929,9 +2930,21 @@ func _show_gameover(won: bool) -> void:
 	_endless = false
 	_hp_mul = 1.0
 	_dmg_mul = 1.0
+	# Grievance points from regular play too, so the rank ladder isn't gated on
+	# the once-a-day challenge. (The daily grants its own via _complete_daily.)
+	var griev := 0
+	if won and not was_endless and not was_daily:
+		griev = 10 + level * 3
+		if _hits_this_fight == 0:
+			griev *= 2                         # flawless bonus
+	elif was_endless:
+		griev = rounds * 8                     # reward the survival run on its loss
+	if griev > 0:
+		_grant_grievance(griev)
 	# Fold this fight's skill read into the long-term baseline (Brawler only).
 	if _adaptive_on():
 		adapt_baseline = clampf(lerpf(adapt_baseline, _skill, 0.3), 0.0, 1.0)
+	_check_awards()                            # rank-point awards can trip here
 	close_menu()
 	phase = Phase.VICTORY if won else Phase.GAMEOVER
 	best_score = maxi(best_score, score)
@@ -2950,7 +2963,10 @@ func _show_gameover(won: bool) -> void:
 	_screen_title.text = "YOU WIN" if won else "YOU'RE FIRED"
 	_screen_title.offset_top = 180.0
 	_screen_title.offset_bottom = 340.0
-	_screen_sub.text = "SCORE %d      BEST %d\nmax combo %d      crits %d" % [score, best_score, max_combo, crits]
+	var sub := "SCORE %d      BEST %d\nmax combo %d      crits %d" % [score, best_score, max_combo, crits]
+	if griev > 0:
+		sub += "\n+%d grievance   ·   %s" % [griev, _rank_title()]
+	_screen_sub.text = sub
 	_screen_hint.text = "tap to continue" if won else "tap to try again"
 
 # Any tap / key advances whichever screen is up.
@@ -5453,12 +5469,18 @@ func _complete_daily(was_flawless: bool) -> void:
 	var reward := 50 + daily_streak * 10
 	if was_flawless:
 		reward *= 2
-	var rank_before := _rank_index()
-	grievance_points += reward
 	_save_prefs()
-	_spawn_text(Vector2(960.0, 360.0), "+%d GRIEVANCE" % reward, 80, Color(1, 0.7, 0.16))
 	_award_toast_text("DAILY GRIEVANCE", "Streak %d  ·  +%d points" % [daily_streak, reward])
-	# Promotion: if this reward pushed us into a new rank, celebrate it.
+	_grant_grievance(reward)
+
+# Add grievance points, pop the floating total, and celebrate a promotion if the
+# points crossed a rank threshold. Shared by the daily, normal wins and Endless.
+func _grant_grievance(amount: int) -> void:
+	if amount <= 0:
+		return
+	var rank_before := _rank_index()
+	grievance_points += amount
+	_spawn_text(Vector2(960.0, 360.0), "+%d GRIEVANCE" % amount, 80, Color(1, 0.7, 0.16))
 	if _rank_index() > rank_before:
 		_award_toast_text("PROMOTED", _rank_title(), 184.0)
 

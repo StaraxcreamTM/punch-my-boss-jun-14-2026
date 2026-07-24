@@ -542,3 +542,16 @@ fits the 2-column grid (verified at 18). Menu counter updates automatically.
 The three gimmick-level intros (The Offsite/bridge, Company Car, Moonshot) had
 only 4 lines each — the thinnest in the game. Added 3 in-theme lines to each
 (9 total) so the memorable setpiece fights don't repeat their banter as fast.
+
+## v0.84 — grievance points from all play (rank ladder was gated)
+
+The rank ladder and its new achievements needed grievance points, but points only
+came from the once-a-day challenge — so you could rank up at most once per day and
+the ranks were effectively unreachable. Now regular wins grant 10 + level*3 (x2
+flawless) and an Endless run grants rounds*8 on its final loss; the daily stays
+the premium source (50 + streak*10). Extracted a shared _grant_grievance() (adds
+points, pops the floating total, fires a PROMOTED toast on a threshold cross) used
+by daily/win/endless. Win screen now shows "+N grievance · <rank>"; _check_awards
+runs on gameover so the point-based awards trip. Parse-clean; reuses the proven
+daily-grant path (win-screen capture skipped — the demo didn't KO the test boss
+in-window, but the render path is the existing gameover screen).
