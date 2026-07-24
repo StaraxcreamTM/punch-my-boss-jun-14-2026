@@ -3647,7 +3647,7 @@ const CHARS := {
 		# Canvas pixels equal his base pixels 1:1 (skull normalised to 309, the
 		# width of his sliced rig head), so the bone anchor is a clean 260,400.
 		"faces": {"dir": "res://assets/boss3/heads", "anchor": Vector2(260, 400),
-			"react": ["hurt0", "hurt1", "hurt2", "hurt3", "shock", "worried"],
+			"react": ["hurt0", "hurt1", "hurt2", "hurt3", "shock", "worried", "dizzy0"],
 			"angry": ["angry0", "angry1", "angry2", "angry3"]},
 		"bones": {
 			"Hip": Vector2(261, 830),
