@@ -242,7 +242,89 @@ GET_UP = [
     (22, {}, (0, 0), 0, (1.0, 1.0)),
 ]
 
-ANIMS = {"ko": KO, "getup": GET_UP}
+# All body/torso-driven, limbs kept within safe overlap angles so nothing detaches
+# on thin characters. Each list: (frame, {bone:deg}, hip_loc, hip_rot_deg, squash).
+
+# HAYMAKER — a loaded, leaning wind-up and swing. The POWER comes from the body
+# coiling and uncoiling (Hip twist + spine), not a windmilling arm (which would
+# shred). Right arm cocks and throws within a safe cap.
+HAYMAKER = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (5,  {"Spine": -12, "Head": -8, "ArmR": -26, "ForearmR": -14, "ArmL": 10},
+         (0, 0.05), 10, (0.98, 1.04)),                       # load back, coil
+    (8,  {"Spine": -16, "Head": -10, "ArmR": -30, "ForearmR": -16, "ArmL": 14},
+         (0, 0.02), 13, (0.97, 1.05)),                       # peak coil (anticipation hold)
+    (11, {"Spine": 20, "Head": 14, "ArmR": 26, "ForearmR": 18, "ArmL": -14},
+         (0, -0.05), -14, (1.08, 0.93)),                     # SWING through, squash
+    (14, {"Spine": 14, "Head": 10, "ArmR": 20, "ForearmR": 12, "ArmL": -8},
+         (0, 0), -9, (1.0, 1.0)),                            # follow-through
+    (19, {}, (0, 0), 0, (1.0, 1.0)),                         # recover
+]
+
+# DODGE WEAVE — bob and weave, ducking side to side. Pure body/head motion.
+DODGE_WEAVE = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (5,  {"Spine": -8, "Head": -10, "ThighL": 8, "ThighR": 8}, (-0.5, -0.55), -9, (1.03, 0.98)),  # weave left+duck
+    (10, {"Head": 4}, (0, -0.35), 0, (1.02, 0.99)),          # low centre
+    (14, {"Spine": 8, "Head": 10, "ThighL": -8, "ThighR": -8}, (0.5, -0.55), 9, (1.03, 0.98)),    # weave right+duck
+    (19, {}, (0, 0), 0, (1.0, 1.0)),                         # back to guard
+]
+
+# STAGGER — reel back onto the ropes and wobble. Body-driven whip.
+STAGGER = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (3,  {"Head": 22, "Spine": -16, "ArmL": 14, "ArmR": -15}, (0, 0.15), -12, (0.96, 1.06)),  # snap back
+    (7,  {"Head": 16, "Spine": -20, "ArmL": 10, "ArmR": -11}, (0, 0.1), -15, (0.97, 1.05)),   # on the ropes
+    (11, {"Head": -8, "Spine": 10, "ArmL": -6, "ArmR": 6}, (0, -0.05), 8, (1.03, 0.98)),      # wobble forward
+    (15, {"Head": 8, "Spine": -8}, (0, 0.05), -6, (1.0, 1.0)),                                # wobble back
+    (19, {}, (0, 0), 0, (1.0, 1.0)),                         # recover
+]
+
+# SHAKE IT OFF — comeback: shakes the head clear, squares up. Head + torso.
+SHAKE_IT_OFF = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (4,  {"Head": -16, "Spine": 3}, (0, 0), -3, (1.0, 1.0)),   # shake left
+    (7,  {"Head": 16, "Spine": -3}, (0, 0), 3, (1.0, 1.0)),    # shake right
+    (10, {"Head": -12, "Spine": 2}, (0, 0), -2, (1.0, 1.0)),   # shake left
+    (13, {"Head": 6, "Spine": -6, "ArmL": -8, "ArmR": 8}, (0, 0.12), 0, (0.97, 1.05)),  # shrug up, stretch
+    (18, {}, (0, 0), 0, (1.0, 1.0)),                          # ready
+]
+
+# VICTORY — bouncy celebration hops with capped arm pumps.
+VICTORY = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (4,  {"ThighL": 6, "ThighR": -6}, (0, -0.35), 0, (1.05, 0.9)),   # crouch (anticipation)
+    (7,  {"ArmL": 20, "ArmR": -22, "ForearmL": 16, "ForearmR": -16, "Head": -6}, (0, 0.55), 0, (0.95, 1.08)),  # jump + pump up
+    (10, {"ThighL": 6, "ThighR": -6}, (0, -0.2), 0, (1.06, 0.9)),    # land, squash
+    (13, {"ArmL": 20, "ArmR": -22, "ForearmL": 16, "ForearmR": -16, "Head": -6}, (0, 0.5), 0, (0.95, 1.07)),   # pump again
+    (16, {"Spine": 10, "Head": 8}, (0, -0.05), 0, (1.0, 1.0)),       # gloat lean
+    (20, {}, (0, 0), 0, (1.0, 1.0)),
+]
+
+# TAUNT — lean in, beckon with a capped gesture, smug lean back.
+TAUNT = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    (5,  {"Spine": 12, "Head": 8, "ArmR": 22, "ForearmR": 20}, (0, -0.05), 0, (1.02, 0.99)),  # lean in + beckon
+    (9,  {"Spine": 12, "Head": 8, "ArmR": 14, "ForearmR": 10}, (0, -0.05), 0, (1.02, 0.99)),  # beckon return
+    (13, {"Spine": -8, "Head": -6, "ArmL": 8}, (0, 0.05), 0, (0.99, 1.02)),                   # smug lean back
+    (18, {}, (0, 0), 0, (1.0, 1.0)),
+]
+
+# ENTRANCE WALK — a walk-in-place cycle (legs alternate, arms swing, body bob).
+# Loopable; the game can translate the boss across screen while it plays.
+ENTRANCE = [
+    (1,  {"ThighL": 18, "ThighR": -16, "ShinL": -10, "ShinR": 18, "ArmL": -12, "ArmR": 12}, (0, -0.05), 0, (1.0, 1.0)),
+    (5,  {"ThighL": 2, "ThighR": 0, "ShinL": -4, "ShinR": 2, "ArmL": 0, "ArmR": 0}, (0, 0.06), 0, (1.0, 1.0)),
+    (9,  {"ThighL": -16, "ThighR": 18, "ShinL": 18, "ShinR": -10, "ArmL": 12, "ArmR": -12}, (0, -0.05), 0, (1.0, 1.0)),
+    (13, {"ThighL": 0, "ThighR": 2, "ShinL": 2, "ShinR": -4, "ArmL": 0, "ArmR": 0}, (0, 0.06), 0, (1.0, 1.0)),
+    (16, {"ThighL": 18, "ThighR": -16, "ShinL": -10, "ShinR": 18, "ArmL": -12, "ArmR": 12}, (0, -0.05), 0, (1.0, 1.0)),
+]
+
+ANIMS = {
+    "ko": KO, "getup": GET_UP, "haymaker": HAYMAKER, "dodge_weave": DODGE_WEAVE,
+    "stagger": STAGGER, "shake_it_off": SHAKE_IT_OFF, "victory": VICTORY,
+    "taunt": TAUNT, "entrance": ENTRANCE,
+}
 
 
 def render_seq(out_dir, last_frame):
