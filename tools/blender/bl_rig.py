@@ -1,0 +1,165 @@
+"""Assemble a game character's sliced parts into a Blender 2D cutout rig and
+render animations to transparent PNG sequences for the play_anim overlay system.
+
+Run headless:
+  blender -b -P tools/blender/bl_rig.py -- <parts_dir> <out_dir> <anim> [start end]
+
+<parts_dir>  a game assets/bossN/parts folder (must contain parts.json + PNGs)
+<out_dir>    where fNNN.png frames are written
+<anim>       animation name (see ANIMS); "tpose" just renders the standing figure
+
+The rig is data-driven: parts.json gives each piece's origin/size/pivot in
+source-image pixels, so pieces reassemble exactly as they were cut. A bone
+hierarchy (BONES) matching the game's scheme parents the pieces; animations
+keyframe the bones with real easing/overlap that the in-engine snap-tweens lack.
+Unlit emission materials keep the flat inked cartoon look (no 3D shading).
+"""
+import json
+import math
+import os
+import sys
+
+import bpy
+import mathutils
+
+SCALE = 0.01           # 1 source pixel -> 0.01 Blender units
+Z_ORDER = ["foot_l", "foot_r", "shin_l", "shin_r", "thigh_l", "thigh_r",
+           "hips", "torso", "uarm_l", "uarm_r", "farm_l", "farm_r",
+           "hand_l", "hand_r", "head"]
+
+# Bone hierarchy: name -> (parent, part-that-defines-its-joint). The joint is the
+# part's pivot; the bone head sits there. Root "Hip" is parented to nothing.
+BONES = [
+    ("Hip", None, "hips"),
+    ("Spine", "Hip", "torso"),
+    ("Head", "Spine", "head"),
+    ("ArmL", "Spine", "uarm_l"), ("ForearmL", "ArmL", "farm_l"), ("HandL", "ForearmL", "hand_l"),
+    ("ArmR", "Spine", "uarm_r"), ("ForearmR", "ArmR", "farm_r"), ("HandR", "ForearmR", "hand_r"),
+    ("ThighL", "Hip", "thigh_l"), ("ShinL", "ThighL", "shin_l"), ("FootL", "ShinL", "foot_l"),
+    ("ThighR", "Hip", "thigh_r"), ("ShinR", "ThighR", "shin_r"), ("FootR", "ShinR", "foot_r"),
+]
+# which parts hang off which bone (a bone drives its own part + is joint-owner)
+PART_BONE = {
+    "hips": "Hip", "torso": "Spine", "head": "Head",
+    "uarm_l": "ArmL", "farm_l": "ForearmL", "hand_l": "HandL",
+    "uarm_r": "ArmR", "farm_r": "ForearmR", "hand_r": "HandR",
+    "thigh_l": "ThighL", "shin_l": "ShinL", "foot_l": "FootL",
+    "thigh_r": "ThighR", "shin_r": "ShinR", "foot_r": "FootR",
+}
+
+
+def px_to_world(x, y, cw, ch):
+    """Source-image pixel (top-left origin, y-down) -> centered Blender XY."""
+    return ((x - cw / 2.0) * SCALE, -(y - ch / 2.0) * SCALE)
+
+
+def make_plane(name, part, tex_path, cw, ch, zi):
+    ox, oy = part["origin"]; w, h = part["size"]
+    cx, cy = px_to_world(ox + w / 2.0, oy + h / 2.0, cw, ch)
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    o = bpy.context.active_object
+    o.name = name
+    o.scale = (w * SCALE, h * SCALE, 1)
+    o.location = (cx, cy, zi * 0.01)
+    bpy.ops.object.transform_apply(scale=True)
+    # unlit material: image emission, alpha-blended
+    mat = bpy.data.materials.new(name + "_m"); mat.use_nodes = True
+    mat.blend_method = 'BLEND'
+    nt = mat.node_tree; nt.nodes.clear()
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(tex_path)
+    tex.interpolation = 'Closest'
+    emis = nt.nodes.new("ShaderNodeEmission")
+    trans = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(tex.outputs["Color"], emis.inputs["Color"])
+    nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+    nt.links.new(trans.outputs["BSDF"], mix.inputs[1])
+    nt.links.new(emis.outputs["Emission"], mix.inputs[2])
+    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    o.data.materials.append(mat)
+    return o
+
+
+def build(parts_dir, cw, ch):
+    parts = json.load(open(os.path.join(parts_dir, "parts.json")))
+    planes = {}
+    for zi, key in enumerate(Z_ORDER):
+        if key not in parts:
+            continue
+        p = os.path.join(parts_dir, key + ".png")
+        if not os.path.exists(p):
+            continue
+        planes[key] = make_plane("part_" + key, parts[key], p, cw, ch, zi)
+    return parts, planes
+
+
+def build_armature(parts, planes, cw, ch):
+    bpy.ops.object.armature_add(enter_editmode=True)
+    arm = bpy.context.active_object
+    arm.name = "Rig"
+    eb = arm.data.edit_bones
+    eb.remove(eb[0])                         # drop the default bone
+    made = {}
+    for name, parent, part_key in BONES:
+        if part_key not in parts:
+            continue
+        px, py = parts[part_key]["pivot"]
+        hx, hy = px_to_world(px, py, cw, ch)
+        b = eb.new(name)
+        b.head = (hx, hy, 0)
+        b.tail = (hx, hy + 0.3, 0)           # short bone pointing +Y
+        if parent and parent in made:
+            b.parent = made[parent]
+        made[name] = b
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # parent each plane to its bone, keeping transform
+    for part_key, bone_name in PART_BONE.items():
+        if part_key not in planes or bone_name not in [b[0] for b in BONES]:
+            continue
+        pl = planes[part_key]
+        pl.parent = arm
+        pl.parent_type = 'BONE'
+        pl.parent_bone = bone_name
+        pl.matrix_parent_inverse = (arm.matrix_world @ arm.pose.bones[bone_name].matrix).inverted()
+    return arm
+
+
+def setup_render(out_path, cw, ch):
+    sc = bpy.context.scene
+    sc.render.engine = 'BLENDER_EEVEE'
+    sc.render.film_transparent = True
+    sc.render.image_settings.file_format = 'PNG'
+    sc.render.image_settings.color_mode = 'RGBA'
+    # portrait-ish frame matching the figure aspect, ~720 tall for weight
+    sc.render.resolution_y = 760
+    sc.render.resolution_x = int(760 * (cw / float(ch))) + 40
+    cam_data = bpy.data.cameras.new("cam"); cam = bpy.data.objects.new("cam", cam_data)
+    sc.collection.objects.link(cam); sc.camera = cam
+    cam.location = (0, 0, 10); cam_data.type = 'ORTHO'
+    cam_data.ortho_scale = ch * SCALE * 1.08
+    sc.render.filepath = out_path
+
+
+def main():
+    argv = sys.argv[sys.argv.index("--") + 1:]
+    parts_dir, out_dir, anim = argv[0], argv[1], argv[2]
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = json.load(open(os.path.join(parts_dir, "parts.json")))
+    cw = max(v["origin"][0] + v["size"][0] for v in parts.values())
+    ch = max(v["origin"][1] + v["size"][1] for v in parts.values())
+    parts, planes = build(parts_dir, cw, ch)
+    arm = build_armature(parts, planes, cw, ch)
+    os.makedirs(out_dir, exist_ok=True)
+    setup_render(os.path.join(out_dir, "f"), cw, ch)
+    if anim == "tpose":
+        bpy.context.scene.render.filepath = os.path.join(out_dir, "tpose")
+        bpy.ops.render.render(write_still=True)
+        print("TPOSE_OK canvas=%dx%d parts=%d bones=%d" % (cw, ch, len(planes), len(arm.pose.bones)))
+        return
+    print("anim '%s' not yet defined" % anim)
+
+
+if __name__ == "__main__":
+    main()
