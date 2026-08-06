@@ -217,7 +217,32 @@ def animate(arm, table):
     return table[-1][0]
 
 
-ANIMS = {"ko": KO}
+# GET-BACK-UP — the reverse of the collapse, with a groggy wobble: starts
+# crumpled forward on the floor, gathers, pushes up through the hips, overshoots
+# a touch, shakes it off, stands. Same root/torso-driven, limb-safe approach.
+GET_UP = [
+    # crumpled on the floor (matches the KO settle pose)
+    (1,  {"Head": 32, "Spine": 24, "ArmL": -12, "ArmR": 13, "ForearmL": -14, "ForearmR": 15,
+          "ThighL": 23, "ThighR": -24, "ShinL": -33, "ShinR": 34},
+         (0, -2.0), -28, (1.0, 1.0)),
+    # gather: head lifts, weight shifts, a beat of anticipation
+    (5,  {"Head": 20, "Spine": 22, "ArmL": -16, "ArmR": 17, "ForearmL": -20, "ForearmR": 21,
+          "ThighL": 26, "ThighR": -27, "ShinL": -36, "ShinR": 37},
+         (0, -1.9), -24, (1.02, 0.98)),
+    # push up through the hips, legs extend
+    (11, {"Head": 8, "Spine": 8, "ArmL": -8, "ArmR": 9, "ForearmL": -8, "ForearmR": 9,
+          "ThighL": 12, "ThighR": -13, "ShinL": -16, "ShinR": 17},
+         (0, -0.7), -8, (0.98, 1.04)),
+    # nearly up, groggy overshoot (stretch up, sways back)
+    (15, {"Head": -8, "Spine": -6, "ArmL": -3, "ArmR": 3},
+         (0, 0.12), 4, (0.96, 1.07)),
+    # shake it off - quick head wobble
+    (18, {"Head": 12, "Spine": 3, "ArmL": -4, "ArmR": 5}, (0, 0.02), -2, (1.01, 1.0)),
+    # settle, standing
+    (22, {}, (0, 0), 0, (1.0, 1.0)),
+]
+
+ANIMS = {"ko": KO, "getup": GET_UP}
 
 
 def render_seq(out_dir, last_frame):
