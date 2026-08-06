@@ -2992,7 +2992,11 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 		_prompt.visible = false
 		_say(String(_level_cfg().get("line", "")))
 	else:
-		if has_anim("charge"):
+		if _endless and _endless_round > 1 and has_anim("getup"):
+			# Endless: the boss you just floored picks himself up for the next
+			# round (Blender get-back-up), then the fight begins.
+			play_anim("getup", 12.0, _enter_guard)
+		elif has_anim("charge"):
 			# Hand-drawn charge intro (from the uploaded video). It plays once,
 			# then the fight begins on the callback.
 			play_anim("charge", 12.0, _enter_guard)
