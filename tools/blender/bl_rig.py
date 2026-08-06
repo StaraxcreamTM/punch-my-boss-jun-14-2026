@@ -203,12 +203,9 @@ def animate(arm, table):
     for frame, poses, loc, rot, sq in table:
         full = {b: poses.get(b, 0) for b in all_bones}
         key_pose(arm, frame, full, loc, rot, sq)
-    # ease the curves
-    for act in bpy.data.actions:
-        for fc in act.fcurves:
-            for kp in fc.keyframe_points:
-                kp.interpolation = 'BEZIER'
-                kp.handle_left_type = kp.handle_right_type = 'AUTO_CLAMPED'
+    # Inserted keyframes default to BEZIER interpolation, so easing/overlap comes
+    # for free. (Blender 5.x moved Action.fcurves under slotted actions; touching
+    # them explicitly isn't needed here.)
     return table[-1][0]
 
 
