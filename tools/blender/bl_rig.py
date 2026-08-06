@@ -132,13 +132,16 @@ def setup_render(out_path, cw, ch):
     sc.render.film_transparent = True
     sc.render.image_settings.file_format = 'PNG'
     sc.render.image_settings.color_mode = 'RGBA'
-    # portrait-ish frame matching the figure aspect, ~720 tall for weight
-    sc.render.resolution_y = 760
-    sc.render.resolution_x = int(760 * (cw / float(ch))) + 40
+    # Frame is as WIDE as it is tall (figure centred at world origin) so limbs
+    # that splay horizontally on a collapse/sprawl have room whatever the body
+    # width. play_anim scales by height and centres on x, so the extra side
+    # margin is free. Height ~720 keeps per-frame weight down.
+    sc.render.resolution_y = 720
+    sc.render.resolution_x = 720
     cam_data = bpy.data.cameras.new("cam"); cam = bpy.data.objects.new("cam", cam_data)
     sc.collection.objects.link(cam); sc.camera = cam
     cam.location = (0, 0, 10); cam_data.type = 'ORTHO'
-    cam_data.ortho_scale = ch * SCALE * 1.08
+    cam_data.ortho_scale = ch * SCALE * 1.12          # square view = ch wide too
     sc.render.filepath = out_path
 
 
