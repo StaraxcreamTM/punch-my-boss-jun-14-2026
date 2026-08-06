@@ -2133,7 +2133,7 @@ func _setup_shots() -> void:
 	# --attract: capture the arcade attract loop instead of the menu-tour demo.
 	if "--attract" in OS.get_cmdline_user_args():
 		_attract_debug = true
-		get_tree().create_timer(0.4).timeout.connect(_start_endless)
+		get_tree().create_timer(0.4).timeout.connect(_enter_attract)
 		return
 	var dm := Timer.new()
 	dm.wait_time = _demo_period
@@ -2944,8 +2944,6 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 		php_start = float(m.get("php", 1.0))
 		_daily_oneshot = bool(m.get("oneshot", false))
 	hp_max = float(cfg.get("hp", 120.0)) * _hp_mul
-	if _shot_mode:
-		hp_max = 14.0
 	_set_hp(hp_max)
 	if reset_player_hp:
 		_set_player_hp(player_hp_max * php_start)
