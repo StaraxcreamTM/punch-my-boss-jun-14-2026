@@ -153,31 +153,32 @@ D = math.radians
 # the root Hip translation, whole-body topple, and squash/stretch. Blender's
 # bezier interpolation between keys supplies the easing, overlap and follow-through
 # the in-engine snap-tweens can't.
-# NB: 2D-cutout limbs disconnect if a joint over-rotates past the pieces' overlap
-# (bad on thin characters). Keep arms <=~30 deg, forearms <=~30, thighs <=~40,
-# shins <=~55. The COLLAPSE reads from the body: Hip sinking, spine curl, head
-# loll, and squash - not from flinging the limbs.
+# 2D-cutout limbs disconnect if a joint over-rotates past the pieces' overlap -
+# and thin characters have almost none. So the collapse is driven by the ROOT
+# and TORSO: the Hip sinks and pitches forward, the spine folds at the waist, the
+# head lolls, and a squash sells the impact. Limbs stay within tiny, safe angles
+# (<=~18 deg) so nothing detaches on any character.
 KO = [
     (1,  {}, (0, 0), 0, (1.0, 1.0)),
-    # anticipation: small snap back, head tips, arms lift a touch (stretch up)
-    (3,  {"Head": 14, "Spine": -8, "ArmL": 22, "ArmR": -24, "ForearmL": 14, "ForearmR": -14},
-         (0, 0.12), -4, (0.97, 1.05)),
-    # knees give out, body folds forward and drops straight down
-    (8,  {"Head": 22, "Spine": 15, "ArmL": -16, "ArmR": 18, "ForearmL": -18, "ForearmR": 20,
-          "ThighL": 34, "ThighR": -36, "ShinL": -52, "ShinR": 54},
-         (0, -1.25), -12, (1.05, 0.9)),
-    # hits the floor: hard squash, knees folded under, head drops, arms flop in
-    (13, {"Head": 40, "Spine": 22, "ArmL": -26, "ArmR": 28, "ForearmL": -26, "ForearmR": 28,
-          "ThighL": 42, "ThighR": -44, "ShinL": -56, "ShinR": 58, "FootL": -16, "FootR": 18},
-         (0, -2.2), -18, (1.15, 0.8)),
-    # rebound overshoot (follow-through: body springs up a touch, head lags)
-    (17, {"Head": 34, "Spine": 18, "ArmL": -22, "ArmR": 24, "ForearmL": -20, "ForearmR": 22,
-          "ThighL": 40, "ThighR": -42, "ShinL": -54, "ShinR": 56},
-         (0, -2.0), -16, (0.96, 1.05)),
-    # settle: crumpled on the floor, come to rest
-    (22, {"Head": 38, "Spine": 20, "ArmL": -24, "ArmR": 26, "ForearmL": -23, "ForearmR": 25,
-          "ThighL": 41, "ThighR": -43, "ShinL": -55, "ShinR": 57, "FootL": -15, "FootR": 17},
-         (0, -2.12), -17, (1.0, 1.0)),
+    # anticipation: brief snap back, head tips, arms lift a hair
+    (3,  {"Head": 12, "Spine": -7, "ArmL": 12, "ArmR": -13, "ForearmL": 8, "ForearmR": -8},
+         (0, 0.1), 5, (0.97, 1.05)),
+    # knees give, whole body pitches forward and drops
+    (8,  {"Head": 20, "Spine": 16, "ArmL": -8, "ArmR": 9, "ForearmL": -10, "ForearmR": 11,
+          "ThighL": 18, "ThighR": -19, "ShinL": -26, "ShinR": 27},
+         (0, -1.15), -16, (1.05, 0.9)),
+    # hits the floor: hard squash, folded forward over the knees, head hangs
+    (13, {"Head": 34, "Spine": 26, "ArmL": -14, "ArmR": 15, "ForearmL": -16, "ForearmR": 17,
+          "ThighL": 24, "ThighR": -25, "ShinL": -34, "ShinR": 35, "FootL": -10, "FootR": 11},
+         (0, -2.05), -30, (1.16, 0.8)),
+    # rebound overshoot (body springs a touch, head lags behind)
+    (17, {"Head": 30, "Spine": 22, "ArmL": -11, "ArmR": 12, "ForearmL": -12, "ForearmR": 13,
+          "ThighL": 22, "ThighR": -23, "ShinL": -32, "ShinR": 33},
+         (0, -1.9), -27, (0.96, 1.05)),
+    # settle: crumpled forward on the floor, at rest
+    (22, {"Head": 32, "Spine": 24, "ArmL": -12, "ArmR": 13, "ForearmL": -14, "ForearmR": 15,
+          "ThighL": 23, "ThighR": -24, "ShinL": -33, "ShinR": 34, "FootL": -9, "FootR": 10},
+         (0, -2.0), -28, (1.0, 1.0)),
 ]
 
 
