@@ -2944,8 +2944,6 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 		php_start = float(m.get("php", 1.0))
 		_daily_oneshot = bool(m.get("oneshot", false))
 	hp_max = float(cfg.get("hp", 120.0)) * _hp_mul
-	if _shot_mode:
-		hp_max = 16.0
 	_set_hp(hp_max)
 	if reset_player_hp:
 		_set_player_hp(player_hp_max * php_start)
