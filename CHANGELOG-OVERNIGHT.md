@@ -590,3 +590,31 @@ driven custom fight (Big Terry in the Construction arena) shows the chosen
 character with the chosen level's rules. NB: themed arenas still render the
 office bg until the background art wave lands — that's the existing art gate, not
 a free-fight bug; arenas 1-9 and all gimmicks/stats already differ.
+
+## v0.88 — Blender 2D-cutout animation pipeline + Terry KO collapse
+
+The user wants Blender in the pipeline; the headless-friendly form is a scripted
+2D CUTOUT rig. `tools/blender/bl_rig.py` assembles a character from its sliced
+parts (parts.json origins/pivots -> image planes, unlit emission for the flat
+inked look), builds an armature on the game's bone scheme, parents pieces, and
+keyframes animations with real bezier easing / anticipation / squash-stretch /
+follow-through. Renders transparent PNG sequences (no keying - native alpha).
+First anim end-to-end: Terry KO COLLAPSE, 22f@12fps, wired as a `_knockout`
+branch (`has_anim("ko_collapse")`), filmstrip-verified in-game. Blender 5.1
+headless confirmed working here.
+
+## v0.89 — KO collapse for suit boss + Sandra (Hip-driven, all builds)
+
+Key lesson: 2D-cutout limbs DETACH when a joint over-rotates past the slice
+overlap - thin characters have almost none. Rewrote the collapse to be ROOT/
+TORSO-driven (Hip sinks + pitches forward, spine folds, head lolls, squash) with
+limbs at tiny safe angles, and switched to a square render frame so horizontal
+sprawl never clips. Shipped ko_collapse for suit (boss2), Sandra (boss5), Terry
+(boss3, re-rendered). Suit verified in-game. HELD: Marcus (boss4) forearms shred
+even at low angles - needs per-char handling; women (boss6-9) still to render.
+
+## note on git history
+The local auto-backup watcher (dormant until Aug 6) is now active: it auto-
+commits every ~20s and pushes to GitHub, so commit messages in `git log` are all
+"auto-save <timestamp>". This CHANGELOG is therefore the authoritative
+descriptive record of what each change did.
