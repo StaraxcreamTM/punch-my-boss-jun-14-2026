@@ -354,12 +354,25 @@ def main():
         bpy.ops.render.render(write_still=True)
         print("TPOSE_OK canvas=%dx%d parts=%d bones=%d" % (cw, ch, len(planes), len(arm.pose.bones)))
         return
-    if anim in ANIMS:
-        last = animate(arm, ANIMS[anim])
-        n = render_seq(out_dir, last)
-        print("ANIM_OK %s frames=%d canvas=%dx%d" % (anim, n, cw, ch))
-        return
-    print("anim '%s' not defined" % anim)
+
+    # "all" (or a comma list) renders many animations in ONE invocation - the rig
+    # is assembled once, then each anim clears the previous action and renders to
+    # its own <out_dir>/<name>/ subfolder. Big speedup vs one Blender start per anim.
+    names = list(ANIMS.keys()) if anim == "all" else [a for a in anim.split(",") if a in ANIMS]
+    for name in names:
+        arm.animation_data_clear()
+        for pb in arm.pose.bones:
+            pb.rotation_mode = 'XYZ'
+            pb.rotation_euler = (0, 0, 0)
+            pb.location = (0, 0, 0)
+        arm.scale = (1, 1, 1)
+        sub = os.path.join(out_dir, name)
+        os.makedirs(sub, exist_ok=True)
+        last = animate(arm, ANIMS[name])
+        n = render_seq(sub, last)
+        print("ANIM_OK %s frames=%d canvas=%dx%d" % (name, n, cw, ch))
+    if not names:
+        print("anim '%s' not defined" % anim)
 
 
 if __name__ == "__main__":
