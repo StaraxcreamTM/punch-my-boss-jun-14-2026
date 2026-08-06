@@ -142,6 +142,90 @@ def setup_render(out_path, cw, ch):
     sc.render.filepath = out_path
 
 
+D = math.radians
+
+# KO COLLAPSE — cartoon knock-out: hit recoil (anticipation) -> knees buckle ->
+# topple back -> sprawl on the floor -> settle. Keys are (frame, poses) where
+# poses maps a bone to its local-Z rotation in degrees; "_loc"/"_rot"/"_sq" drive
+# the root Hip translation, whole-body topple, and squash/stretch. Blender's
+# bezier interpolation between keys supplies the easing, overlap and follow-through
+# the in-engine snap-tweens can't.
+KO = [
+    (1,  {}, (0, 0), 0, (1.0, 1.0)),
+    # anticipation: snap back, head flies, arms up
+    (3,  {"Head": 18, "Spine": -10, "ArmL": 42, "ArmR": -46, "ForearmL": 30, "ForearmR": -30},
+         (0, 0.1), -6, (0.98, 1.05)),
+    # knees give out, body starts dropping and toppling back
+    (8,  {"Head": -24, "Spine": 16, "ArmL": -50, "ArmR": 52, "ForearmL": -40, "ForearmR": 44,
+          "ThighL": 40, "ThighR": -44, "ShinL": -70, "ShinR": 72},
+         (0.1, -1.4), -34, (1.06, 0.9)),
+    # impact on the floor: hard squash, limbs splay, head lolls
+    (13, {"Head": -46, "Spine": 26, "ArmL": -78, "ArmR": 82, "ForearmL": -20, "ForearmR": 24,
+          "ThighL": 66, "ThighR": -70, "ShinL": -40, "ShinR": 44, "FootL": -20, "FootR": 22},
+         (0.05, -2.7), -78, (1.14, 0.82)),
+    # overshoot rebound (follow-through)
+    (17, {"Head": -38, "Spine": 22, "ArmL": -70, "ArmR": 74, "ThighL": 60, "ThighR": -64,
+          "ShinL": -46, "ShinR": 50},
+         (0.05, -2.5), -84, (0.97, 1.05)),
+    # settle, come to rest sprawled out
+    (22, {"Head": -42, "Spine": 24, "ArmL": -74, "ArmR": 78, "ForearmL": -18, "ForearmR": 22,
+          "ThighL": 62, "ThighR": -66, "ShinL": -44, "ShinR": 48, "FootL": -18, "FootR": 20},
+         (0.05, -2.6), -82, (1.0, 1.0)),
+]
+
+
+def key_pose(arm, frame, poses, loc, rot, sq):
+    bpy.context.scene.frame_set(frame)
+    for pb in arm.pose.bones:
+        pb.rotation_mode = 'XYZ'
+    for bone, deg in poses.items():
+        if bone in arm.pose.bones:
+            pb = arm.pose.bones[bone]
+            pb.rotation_euler = (0, 0, D(deg))
+            pb.keyframe_insert("rotation_euler", frame=frame)
+    hip = arm.pose.bones.get("Hip")
+    if hip:
+        hip.location = (loc[0], loc[1], 0)
+        hip.rotation_euler = (0, 0, D(rot))
+        hip.keyframe_insert("location", frame=frame)
+        hip.keyframe_insert("rotation_euler", frame=frame)
+    arm.scale = (sq[0], sq[1], 1)
+    arm.keyframe_insert("scale", frame=frame)
+
+
+def animate(arm, table):
+    # ensure every posed bone has a key at frame 1 too (clean rest start)
+    all_bones = set()
+    for _, poses, _, _, _ in table:
+        all_bones |= set(poses.keys())
+    for pb in arm.pose.bones:
+        pb.rotation_mode = 'XYZ'
+    for frame, poses, loc, rot, sq in table:
+        full = {b: poses.get(b, 0) for b in all_bones}
+        key_pose(arm, frame, full, loc, rot, sq)
+    # ease the curves
+    for act in bpy.data.actions:
+        for fc in act.fcurves:
+            for kp in fc.keyframe_points:
+                kp.interpolation = 'BEZIER'
+                kp.handle_left_type = kp.handle_right_type = 'AUTO_CLAMPED'
+    return table[-1][0]
+
+
+ANIMS = {"ko": KO}
+
+
+def render_seq(out_dir, last_frame):
+    sc = bpy.context.scene
+    n = 0
+    for f in range(1, last_frame + 1):
+        sc.frame_set(f)
+        sc.render.filepath = os.path.join(out_dir, "f%03d" % n)
+        bpy.ops.render.render(write_still=True)
+        n += 1
+    return n
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:]
     parts_dir, out_dir, anim = argv[0], argv[1], argv[2]
@@ -158,7 +242,12 @@ def main():
         bpy.ops.render.render(write_still=True)
         print("TPOSE_OK canvas=%dx%d parts=%d bones=%d" % (cw, ch, len(planes), len(arm.pose.bones)))
         return
-    print("anim '%s' not yet defined" % anim)
+    if anim in ANIMS:
+        last = animate(arm, ANIMS[anim])
+        n = render_seq(out_dir, last)
+        print("ANIM_OK %s frames=%d canvas=%dx%d" % (anim, n, cw, ch))
+        return
+    print("anim '%s' not defined" % anim)
 
 
 if __name__ == "__main__":
