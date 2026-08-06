@@ -152,25 +152,25 @@ D = math.radians
 # the in-engine snap-tweens can't.
 KO = [
     (1,  {}, (0, 0), 0, (1.0, 1.0)),
-    # anticipation: snap back, head flies, arms up
-    (3,  {"Head": 18, "Spine": -10, "ArmL": 42, "ArmR": -46, "ForearmL": 30, "ForearmR": -30},
-         (0, 0.1), -6, (0.98, 1.05)),
-    # knees give out, body starts dropping and toppling back
-    (8,  {"Head": -24, "Spine": 16, "ArmL": -50, "ArmR": 52, "ForearmL": -40, "ForearmR": 44,
-          "ThighL": 40, "ThighR": -44, "ShinL": -70, "ShinR": 72},
-         (0.1, -1.4), -34, (1.06, 0.9)),
-    # impact on the floor: hard squash, limbs splay, head lolls
-    (13, {"Head": -46, "Spine": 26, "ArmL": -78, "ArmR": 82, "ForearmL": -20, "ForearmR": 24,
-          "ThighL": 66, "ThighR": -70, "ShinL": -40, "ShinR": 44, "FootL": -20, "FootR": 22},
-         (0.05, -2.7), -78, (1.14, 0.82)),
-    # overshoot rebound (follow-through)
-    (17, {"Head": -38, "Spine": 22, "ArmL": -70, "ArmR": 74, "ThighL": 60, "ThighR": -64,
-          "ShinL": -46, "ShinR": 50},
-         (0.05, -2.5), -84, (0.97, 1.05)),
-    # settle, come to rest sprawled out
-    (22, {"Head": -42, "Spine": 24, "ArmL": -74, "ArmR": 78, "ForearmL": -18, "ForearmR": 22,
-          "ThighL": 62, "ThighR": -66, "ShinL": -44, "ShinR": 48, "FootL": -18, "FootR": 20},
-         (0.05, -2.6), -82, (1.0, 1.0)),
+    # anticipation: snap back, head flies, arms fly up (stretch)
+    (3,  {"Head": 16, "Spine": -9, "ArmL": 40, "ArmR": -44, "ForearmL": 26, "ForearmR": -26},
+         (0, 0.12), -5, (0.97, 1.06)),
+    # knees give out, body folds and drops straight down
+    (8,  {"Head": 20, "Spine": 14, "ArmL": -34, "ArmR": 36, "ForearmL": -30, "ForearmR": 32,
+          "ThighL": 58, "ThighR": -60, "ShinL": -96, "ShinR": 98},
+         (0, -1.3), -14, (1.05, 0.9)),
+    # hits the floor: hard squash, knees fully folded under, arms splay, head drops
+    (13, {"Head": 40, "Spine": 20, "ArmL": -58, "ArmR": 60, "ForearmL": -44, "ForearmR": 46,
+          "ThighL": 78, "ThighR": -80, "ShinL": -120, "ShinR": 122, "FootL": -24, "FootR": 26},
+         (0, -2.35), -22, (1.16, 0.8)),
+    # rebound overshoot (follow-through: body springs up a touch, arms lag)
+    (17, {"Head": 34, "Spine": 17, "ArmL": -52, "ArmR": 54, "ForearmL": -30, "ForearmR": 32,
+          "ThighL": 74, "ThighR": -76, "ShinL": -116, "ShinR": 118},
+         (0, -2.15), -20, (0.96, 1.05)),
+    # settle: crumpled on the floor, come to rest
+    (22, {"Head": 38, "Spine": 19, "ArmL": -55, "ArmR": 57, "ForearmL": -36, "ForearmR": 38,
+          "ThighL": 76, "ThighR": -78, "ShinL": -118, "ShinR": 120, "FootL": -22, "FootR": 24},
+         (0, -2.28), -21, (1.0, 1.0)),
 ]
 
 
