@@ -618,3 +618,19 @@ The local auto-backup watcher (dormant until Aug 6) is now active: it auto-
 commits every ~20s and pushes to GitHub, so commit messages in `git log` are all
 "auto-save <timestamp>". This CHANGELOG is therefore the authoritative
 descriptive record of what each change did.
+
+## v0.90 — get-back-up animation (Blender), wired to Endless round-return
+
+Second Blender animation type: GET-BACK-UP - crumpled on the floor -> gather ->
+push up through the hips -> groggy overshoot -> shake it off -> stand (ends on a
+clean neutral bookend). Same root/torso-driven, limb-safe authoring. Rendered
+for suit (boss2) + Terry (boss3), 22f@12fps. Wired into the fight entrance: in
+Endless, when the boss returns for round 2+ and has_anim("getup"), he picks
+himself up instead of the generic entrance. Filmstrip-verified in-game (plays
+correctly, hands off to the rig). Pipeline now proven for two animation types
+across multiple characters.
+
+Still to do from the list: haymaker wind-up, dodge weave, ropes-lean stagger,
+comeback shake-it-off; KO collapse for Marcus (forearm-shred fix) + women;
+get-up for more characters. All bounded by the cutout limb-overlap constraint
+(keep joint rotations modest) documented in v0.89.
