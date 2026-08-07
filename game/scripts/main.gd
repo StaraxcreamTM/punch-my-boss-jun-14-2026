@@ -3004,6 +3004,9 @@ func _start_fight(reset_player_hp: bool = true) -> void:
 			# Hand-drawn charge intro (from the uploaded video). It plays once,
 			# then the fight begins on the callback.
 			play_anim("charge", 12.0, _enter_guard)
+		elif has_anim("entrance"):
+			# Blender entrance walk-in, then the fight begins.
+			play_anim("entrance", 12.0, _enter_guard)
 		elif has_pose("walk"):
 			play_entrance()
 			_enter_guard()
