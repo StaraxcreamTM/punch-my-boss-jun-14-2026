@@ -2922,7 +2922,9 @@ func _start_prefight(free_fight: bool = false) -> void:
 	if pre.is_empty():
 		pre = [String(cfg.get("line", ""))]
 	_say(_line("prefight%d" % level, pre))
-	if rig_anim != null:
+	if has_anim("taunt"):
+		play_anim("taunt", 12.0)      # Blender prefight taunt (non-gameplay beat)
+	elif rig_anim != null:
 		rig_anim.point_at_player()
 
 func _start_fight(reset_player_hp: bool = true) -> void:
