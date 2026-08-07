@@ -182,11 +182,17 @@ KO = [
 ]
 
 
+FREEZE_ARMS = False   # set per-character when parts.json arm pivots are bad
+ARM_BONES = {"ArmL", "ArmR", "ForearmL", "ForearmR", "HandL", "HandR"}
+
+
 def key_pose(arm, frame, poses, loc, rot, sq):
     bpy.context.scene.frame_set(frame)
     for pb in arm.pose.bones:
         pb.rotation_mode = 'XYZ'
     for bone, deg in poses.items():
+        if FREEZE_ARMS and bone in ARM_BONES:
+            deg = 0                        # bad arm-slice data: keep arms rigid
         if bone in arm.pose.bones:
             pb = arm.pose.bones[bone]
             pb.rotation_euler = (0, 0, D(deg))
