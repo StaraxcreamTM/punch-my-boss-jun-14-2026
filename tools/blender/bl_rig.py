@@ -347,6 +347,9 @@ def render_seq(out_dir, last_frame):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:]
     parts_dir, out_dir, anim = argv[0], argv[1], argv[2]
+    if "noarms" in argv[3:]:
+        global FREEZE_ARMS
+        FREEZE_ARMS = True
     bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = json.load(open(os.path.join(parts_dir, "parts.json")))
     cw = max(v["origin"][0] + v["size"][0] for v in parts.values())
