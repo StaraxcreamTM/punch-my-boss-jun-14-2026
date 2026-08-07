@@ -1557,7 +1557,9 @@ func _game_over() -> void:
 	var bt := create_tween()
 	bt.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.3) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	if rig_anim != null:
+	if has_anim("victory"):
+		play_anim("victory", 12.0)     # Blender celebration (player lost)
+	elif rig_anim != null:
 		set_pose("")          # drop any held pose so the celebration shows
 		rig_anim.laugh()
 		rig_anim.victory_dance()
