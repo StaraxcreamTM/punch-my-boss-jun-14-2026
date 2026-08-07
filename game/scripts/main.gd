@@ -1634,12 +1634,12 @@ func _knockout() -> void:
 	var bt := create_tween()
 	bt.tween_property(ko_banner, "scale", Vector2(1.1, 1.1), 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-	if has_anim("ko_collapse"):
+	if has_anim("ko"):
 		# Blender-authored full-body KO collapse (crumple to the floor). Plays as a
 		# frame sequence overlay at normal speed - the hand-animated arc reads far
 		# better than the generic launch.
 		Engine.time_scale = 1.0
-		play_anim("ko_collapse", 12.0)
+		play_anim("ko", 12.0)
 		await get_tree().create_timer(22.0 / 12.0 + 0.2, true, false, true).timeout
 	elif has_ko():
 		# Floored KO: he drops where he stands and the hand-drawn KO art shows
